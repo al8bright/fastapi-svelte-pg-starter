@@ -15,14 +15,28 @@
 set -euo pipefail
 
 WITH_PG=0
-[ "${1:-}" = "--with-postgres" ] && WITH_PG=1
+# 버전 고정 파일(.python-version/.nvmrc)을 쓸 위치. 미지정 시 이 스크립트의 상위 폴더.
+# scaffold.sh 는 템플릿 리포 오염을 막기 위해 임시 폴더를 넘긴다.
+PROJECT_ROOT_ARG=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --with-postgres) WITH_PG=1; shift ;;
+    --project-root)  PROJECT_ROOT_ARG="$2"; shift 2 ;;
+    *) echo "알 수 없는 옵션: $1" >&2; exit 1 ;;
+  esac
+done
 
 info(){ printf '  [i]  %s\n' "$1"; }
 ok(){   printf '  [OK] %s\n' "$1"; }
 warn(){ printf '  [!]  %s\n' "$1"; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+if [ -n "$PROJECT_ROOT_ARG" ]; then
+  mkdir -p "$PROJECT_ROOT_ARG"
+  PROJECT_ROOT="$(cd "$PROJECT_ROOT_ARG" && pwd)"
+else
+  PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+fi
 
 # 최소 버전 로드 (단일 출처)
 # shellcheck disable=SC1091

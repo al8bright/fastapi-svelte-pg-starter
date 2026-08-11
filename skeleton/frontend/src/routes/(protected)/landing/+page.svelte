@@ -36,7 +36,7 @@
         프로젝트 스캐폴드 완료 🎉
       </h1>
       <p class="mt-3 text-on-surface-variant">
-        사내 공통 아키텍처(FastAPI · Svelte · PostgreSQL) 기반 스타터입니다.
+        공통 아키텍처(FastAPI · Svelte · PostgreSQL) 기반 스타터입니다.
         아래에서 백엔드/DB 연결 상태를 확인하세요.
       </p>
     </header>

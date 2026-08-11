@@ -1,7 +1,7 @@
 ﻿#requires -Version 5.1
 <#
 .SYNOPSIS
-  사내 공통 아키텍처 기반 신규 프로젝트 스캐폴드 (architecture.md 준수).
+  공통 아키텍처 기반 신규 프로젝트 스캐폴드 (architecture.md 준수).
 
 .DESCRIPTION
   skeleton/ 골격을 복사하고 토큰을 치환한 뒤,
@@ -79,14 +79,30 @@ function _Meets($have, [string]$minStr) {
 $_needBootstrap = $false
 if (-not (Get-Command pyenv -ErrorAction SilentlyContinue)) { $_needBootstrap = $true }
 if (-not (Get-Command fnm   -ErrorAction SilentlyContinue)) { $_needBootstrap = $true }
-$_pyVer = _Get-SemVer (try { python --version 2>&1 | Out-String } catch { "" })
-if (-not (_Meets $_pyVer ($_min['MIN_PYTHON'] ?? '3.10'))) { $_needBootstrap = $true }
+# 주의: (try {...} catch {...}) 는 인자 자리에서 try 를 명령어로 해석해 실패한다. 문으로 분리한다.
+$_pyRaw = ""
+try { $_pyRaw = (python --version 2>&1 | Out-String) } catch { $_pyRaw = "" }
+$_pyVer = _Get-SemVer $_pyRaw
+# 주의: ?? 는 PowerShell 7 전용 — 5.1 에서는 파싱 단계에서 죽는다. 절대 되돌리지 말 것.
+$_minPy = $_min['MIN_PYTHON']
+if (-not $_minPy) { $_minPy = '3.10' }
+if (-not (_Meets $_pyVer $_minPy)) { $_needBootstrap = $true }
 
+# bootstrap 이 고정한 런타임 버전을 받아둘 임시 폴더 (템플릿 리포를 더럽히지 않기 위함)
+$_PinDir = $null
 if ($_needBootstrap) {
   if (Test-Path $_Bootstrap) {
     Write-Warn2 "필수 도구(pyenv-win·fnm) 없거나 Python 버전 미달 — bootstrap.ps1 을 먼저 실행합니다 …"
-    & $_Bootstrap
+    $_PinDir = Join-Path ([System.IO.Path]::GetTempPath()) ("scaffold-pin-" + [guid]::NewGuid().ToString("N").Substring(0,8))
+    New-Item -ItemType Directory -Force -Path $_PinDir | Out-Null
+    & $_Bootstrap -ProjectRoot $_PinDir
     Enable-VersionManagers
+    # bootstrap 후 Node 버전을 현재 세션에 명시 활성화 (fnm env 만으로는 활성화되지 않는다)
+    $_nvmrc = Join-Path $_PinDir ".nvmrc"
+    if (Test-Path $_nvmrc) {
+      $_pinNode = (Get-Content -Raw $_nvmrc).Trim()
+      if ($_pinNode) { try { fnm use $_pinNode 2>$null } catch { } }
+    }
   } else {
     Write-Warn2 "bootstrap.ps1 을 찾을 수 없습니다 ($_Bootstrap). 수동으로 먼저 실행하세요."
     exit 1
@@ -191,7 +207,11 @@ if (-not $SkipDb) {
   $i = Read-Host "DB name [$DbName]"; if ($i) { $DbName = $i }
 }
 $databaseUrl = "postgresql+psycopg2://${DbUser}:${DbPassword}@${DbHost}:${DbPort}/${DbName}"
-$secret = -join ((1..48) | ForEach-Object { '{0:x}' -f (Get-Random -Maximum 16) })
+# SECRET_KEY 는 JWT 서명 키다. Get-Random(System.Random) 은 CSPRNG 가 아니므로 쓰지 않는다.
+$_secBytes = [byte[]]::new(24)
+$_rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+try { $_rng.GetBytes($_secBytes) } finally { $_rng.Dispose() }
+$secret = -join ($_secBytes | ForEach-Object { $_.ToString('x2') })
 
 # ---------- 2. 골격 복사 ----------
 Write-Step "골격 복사 → $Target"
@@ -210,12 +230,21 @@ if ((Test-Path $claudeSrc) -and (-not (Test-Path $claudeDst))) {
   Copy-Item $claudeSrc $claudeDst -Recurse -Force
 }
 if ($useDesign) { Copy-Item $DesignFile (Join-Path $Target 'docs\DESIGN.md') -Force }
+# bootstrap 이 실제로 설치·고정한 런타임 버전을 생성 프로젝트에 반영 (골격의 값은 덮어쓴다)
+if ($_PinDir) {
+  foreach ($pin in '.python-version', '.nvmrc') {
+    $srcPin = Join-Path $_PinDir $pin
+    if (Test-Path $srcPin) { Copy-Item $srcPin (Join-Path $Target $pin) -Force }
+  }
+  Remove-Item -Recurse -Force $_PinDir -ErrorAction SilentlyContinue
+}
 Write-Ok "복사 완료"
 
 # ---------- 3. 토큰 치환 ----------
 Write-Step "토큰 치환"
 $inc = '*.ts','*.svelte','*.py','*.css','*.html','*.json','*.md','*.ini','*.mako','*.js','*.example','*.txt'
-$files = Get-ChildItem -Path $Target -Recurse -File -Include $inc
+# -Force: 숨김 속성/닷 디렉토리(.claude, .github) 하위 파일도 치환 대상에 포함시킨다.
+$files = Get-ChildItem -Path $Target -Recurse -File -Force -Include $inc
 foreach ($f in $files) {
   $t = [System.IO.File]::ReadAllText($f.FullName)
   $o = $t
@@ -262,7 +291,7 @@ if (-not $SkipDb) {
   $psql = Get-Command psql -ErrorAction SilentlyContinue
   if (-not $psql) {
     Write-Warn2 "psql 을 PATH 에서 찾을 수 없습니다. DB 생성을 건너뜁니다."
-    Write-Warn2 "수동: psql -U $DbUser -c \"CREATE DATABASE $DbName\" 후 alembic upgrade head"
+    Write-Warn2 "수동: psql -U $DbUser -c `"CREATE DATABASE $DbName`" 후 alembic upgrade head"
   } else {
     $env:PGPASSWORD = $DbPassword
     try {

@@ -9,7 +9,13 @@ on:
 
 jobs:
   backend:
-    runs-on: ubuntu-latest
+    # 이 프로젝트는 Windows 와 macOS 에서 함께 개발한다.
+    # Ubuntu 만 돌리면 OS 분기 버그(경로·인코딩·타임존·휠)를 영원히 못 잡는다.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     defaults:
       run:
         working-directory: backend
@@ -30,6 +36,50 @@ jobs:
         # 테스트는 SQLite in-memory 사용 — 외부 DB 불필요 (§12)
         run: pytest -q
 
+  # .ps1 은 Windows PowerShell 5.1 에서 파싱되어야 한다.
+  # PS7 전용 문법(??, ?:, &&/||)이 섞이면 5.1 은 한 줄도 실행하지 못하고 죽는다.
+  powershell-syntax:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse all .ps1 with Windows PowerShell 5.1
+        shell: powershell # pwsh 가 아니라 5.1 이어야 의미가 있다
+        run: |
+          $failed = $false
+          $files = Get-ChildItem -Path . -Recurse -File -Force -Filter *.ps1
+          if (-not $files) { Write-Host "검사할 .ps1 없음"; exit 0 }
+          foreach ($f in $files) {
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$null, [ref]$errors)
+            if ($errors.Count -gt 0) {
+              $failed = $true
+              Write-Host "::error file=$($f.FullName)::구문 오류 $($errors.Count)건"
+              foreach ($e in $errors) {
+                Write-Host ("  L{0}:{1} {2}" -f $e.Extent.StartLineNumber, $e.Extent.StartColumnNumber, $e.Message)
+              }
+            } else {
+              Write-Host "OK  $($f.FullName)"
+            }
+          }
+          if ($failed) { exit 1 }
+      - name: Reject PS7-only syntax
+        # 위 파싱 검사는 shell 이 5.1 일 때만 유효하다. 이 검사는 버전과 무관하게 동작한다.
+        shell: powershell
+        run: |
+          $failed = $false
+          $ps7Kinds = @('QuestionQuestion','QuestionQuestionEquals','AndAnd','OrOr','QuestionDot','QuestionLBracket')
+          foreach ($f in Get-ChildItem -Path . -Recurse -File -Force -Filter *.ps1) {
+            $tokens = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$tokens, [ref]$null)
+            foreach ($t in $tokens) {
+              if ($ps7Kinds -contains "$($t.Kind)") {
+                $failed = $true
+                Write-Host "::error file=$($f.FullName),line=$($t.Extent.StartLineNumber)::'$($t.Text)' 는 PowerShell 7 전용입니다."
+              }
+            }
+          }
+          if ($failed) { exit 1 }
+
   frontend:
     runs-on: ubuntu-latest
     defaults:
@@ -39,6 +89,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
+          # corepack 은 Node 25 부터 배포본에서 제거됐다. "lts/*"/"latest" 로 바꾸지 말 것.
           node-version: "24"
       - name: Enable pnpm (corepack)
         run: corepack enable

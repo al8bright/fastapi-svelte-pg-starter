@@ -18,7 +18,12 @@
   .\scripts\bootstrap.ps1 -WithPostgres
 #>
 [CmdletBinding()]
-param([switch]$WithPostgres)
+param(
+  [switch]$WithPostgres,
+  # 버전 고정 파일(.python-version/.nvmrc)을 쓸 위치. 미지정 시 이 스크립트의 상위 폴더.
+  # scaffold.ps1 은 템플릿 오염을 막기 위해 임시 폴더를 넘긴다.
+  [string]$ProjectRoot
+)
 
 $ErrorActionPreference = "Stop"
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
@@ -85,7 +90,12 @@ if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
   throw "winget 이 필요합니다. Microsoft Store 에서 'App Installer' 설치 후 다시 실행하세요."
 }
 
-$projectRoot = Split-Path $PSScriptRoot -Parent
+if ($ProjectRoot) {
+  New-Item -ItemType Directory -Force -Path $ProjectRoot | Out-Null
+  $projectRoot = (Resolve-Path $ProjectRoot).Path
+} else {
+  $projectRoot = Split-Path $PSScriptRoot -Parent
+}
 
 # ── 1. pyenv-win 설치/확인 ──────────────────────────────────────────────────
 if (-not (Get-Command pyenv -ErrorAction SilentlyContinue)) {
@@ -119,7 +129,7 @@ if ($installed -match [regex]::Escape($pyenvPython)) {
   pyenv install $pyenvPython
 }
 
-Set-Content -Path (Join-Path $projectRoot '.python-version') -Value $pyenvPython -NoNewline
+Set-Content -Path (Join-Path $projectRoot '.python-version') -Value $pyenvPython -NoNewline -Encoding ASCII
 Ok "Python $pyenvPython → .python-version 고정"
 try { pyenv rehash } catch {}
 
@@ -142,7 +152,7 @@ if ($fnmList -match "v$([regex]::Escape($min['MIN_NODE']))\.") {
   fnm install $min['MIN_NODE']
 }
 fnm use $min['MIN_NODE']
-Set-Content -Path (Join-Path $projectRoot '.nvmrc') -Value $min['MIN_NODE'] -NoNewline
+Set-Content -Path (Join-Path $projectRoot '.nvmrc') -Value $min['MIN_NODE'] -NoNewline -Encoding ASCII
 Ok "Node $($min['MIN_NODE']) → .nvmrc 고정"
 
 # ── 5. pnpm (Node 내장 corepack 으로 활성화) ────────────────────────────────

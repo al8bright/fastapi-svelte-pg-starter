@@ -1,6 +1,6 @@
-# FastAPI + SvelteKit + PostgreSQL 프로젝트 스타터 템플릿 (사내 공통)
+# FastAPI + SvelteKit + PostgreSQL 프로젝트 스타터 템플릿
 
-신규 사내 프로젝트를 **스크립트 한 번**으로 만든다.
+신규 프로젝트를 **스크립트 한 번**으로 만든다.
 모든 프로젝트의 기준(아키텍처·룰)의 원본(SSOT)은 이 폴더다.
 
 ```
@@ -20,9 +20,115 @@ _project-template/
     └── frontend/           # SvelteKit(SPA) + Svelte 5 + TS + Tailwind v4 + axios/svelte-query/runes
 ```
 
+## 한눈에 보기
+
+### 무엇이 들어 있나
+
+```mermaid
+mindmap
+  root((FastAPI + SvelteKit + PostgreSQL 스타터))
+    백엔드
+      FastAPI + Uvicorn
+      SQLAlchemy 2.0
+      Alembic 마이그레이션
+      pytest + ruff
+      PostgreSQL
+    프론트엔드
+      SvelteKit SPA
+      Svelte 5 runes
+      TanStack svelte-query
+      axios
+      Tailwind CSS v4
+    기본 내장 기능
+      JWT 로그인
+      관리자 계정 자동 시드
+      보호 라우트 가드
+      백엔드·DB 상태 화면
+    자동화
+      scaffold.sh / scaffold.ps1
+      런타임 부트스트랩
+      GitHub Actions CI
+      Claude 스킬 5종
+    고정 규칙
+      DB는 Alembic으로만
+      설정은 .env로만
+      시각은 KST 단일 기준
+      TDD + Tidy First
+```
+
+### 스크립트 한 번으로 무슨 일이 일어나나
+
+```mermaid
+flowchart TD
+    A["scaffold.sh / scaffold.ps1 실행"] --> B{"런타임 최소 버전 충족?"}
+    B -- 아니오 --> C["bootstrap: pyenv·fnm 으로 Python·Node 준비"]
+    B -- 예 --> D["프로젝트명 입력 → snake_case 변환"]
+    C --> D
+    D --> E{"DESIGN.md 적용?"}
+    E -- 예 --> F["colors·typography → Tailwind @theme 생성"]
+    E -- 아니오 --> G["기본 테마 사용"]
+    F --> H["skeleton 복사 + 토큰 치환"]
+    G --> H
+    H --> I["backend/.env · frontend/.env 생성"]
+    I --> J["백엔드 venv + pip install"]
+    J --> K["psql 로 DB 생성 → alembic upgrade head"]
+    K --> L["프론트 pnpm install"]
+    L --> M["실행 방법 안내 출력"]
+```
+
+### 만들어진 앱이 실제로 도는 모습
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as 사용자
+    participant F as SvelteKit SPA
+    participant A as FastAPI
+    participant D as PostgreSQL
+
+    U->>F: 루트 경로 접속
+    F->>F: protected 그룹 가드가 토큰 확인
+    F-->>U: 토큰 없음 → 로그인 화면
+    U->>F: 아이디·비밀번호 입력
+    F->>A: POST /api/v1/auth/login
+    A->>D: 사용자 조회 + bcrypt 검증
+    D-->>A: user
+    A-->>F: access_token
+    F->>F: localStorage 저장 후 메인으로 이동
+    F->>A: GET /api/v1/auth/me
+    A-->>F: 사용자 정보
+    U->>F: 시스템 상태 화면 열기
+    F->>A: GET /api/v1/health 와 /api/v1/health/db
+    A->>D: 연결 확인
+    A-->>F: 정상 응답
+    F-->>U: 백엔드·데이터베이스 상태 표시
+```
+
+### 요청이 흐르는 계층
+
+```mermaid
+flowchart LR
+    subgraph FE["프론트엔드 src/"]
+      RT2["routes/ 화면"] --> QR["lib/queries/ 서버 상태"]
+      QR --> AX["lib/api/ axios 인스턴스"]
+      RT2 --> ST["lib/stores/ runes 전역 상태"]
+    end
+    subgraph BE["백엔드 app/"]
+      RR["api/v1/ 얇은 라우터"] --> SV["services/ 도메인 로직"]
+      RR --> SC["schemas/ Pydantic 검증"]
+      SV --> MD["models/ SQLAlchemy"]
+    end
+    AX -->|"Bearer JWT · /api/v1"| RR
+    MD --> DB[("PostgreSQL")]
+    AL["alembic/ 마이그레이션"] --> DB
+```
+
+> 계층 규칙: 라우터는 HTTP 만 얇게, 도메인 로직은 `services/`, 검증은 `schemas/`.
+> 프론트는 서버 상태를 `lib/queries/` 로만 다루고 직접 패칭하지 않는다. 상세는 [`skeleton/docs/architecture.md`](skeleton/docs/architecture.md).
+
 ## 사용법 — OS별 스크립트
 
-> `_project-template` 폴더는 **공용 위치를 두지 않는다.** 각자 자신의 OS·작업 폴더로 복사해서 쓴다.
+> 이 템플릿 폴더는 자신의 OS·작업 폴더로 복사해서 쓴다.
 > 두 스크립트는 같은 `skeleton/`·`DESIGN.md` 를 사용하므로 어느 OS에서 만들어도 결과가 동일하다.
 
 > **생성 위치(`-Target`/`--target`)를 지정하지 않으면** `_project-template` 의 **부모 폴더에 프로젝트명으로** 생성된다.
@@ -35,7 +141,7 @@ _project-template/
 .\scaffold.ps1
 
 # 인자 지정
-.\scaffold.ps1 -Name PurchaseOrderManagement -Target P:\fastapi\PurchaseOrderManagement
+.\scaffold.ps1 -Name MyProject -Target C:\work\MyProject
 
 # 골격만 빠르게 (DB·설치 생략)
 .\scaffold.ps1 -Name Demo -Target .\Demo -SkipDb -SkipInstall
@@ -50,7 +156,7 @@ chmod +x scaffold.sh          # 최초 1회 (실행 권한이 없을 때)
 ./scaffold.sh
 
 # 인자 지정
-./scaffold.sh --name PurchaseOrderManagement --target ~/work/PurchaseOrderManagement
+./scaffold.sh --name MyProject --target ~/work/MyProject
 
 # 골격만 빠르게
 ./scaffold.sh --name Demo --target ./Demo --skip-db --skip-install

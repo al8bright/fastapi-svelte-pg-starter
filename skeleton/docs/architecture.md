@@ -1,9 +1,8 @@
-# 사내 프로젝트 공통 아키텍처 가이드
+# 프로젝트 공통 아키텍처 가이드
 
-> 본 문서는 **앞으로 개발하는 모든 사내 웹 프로젝트**가 따르는 공통 표준이다.
+> 본 문서는 **이 템플릿으로 만드는 모든 웹 프로젝트**가 따르는 공통 표준이다.
 > 표준 스택은 **FastAPI(백엔드) + SvelteKit/Vite(프론트엔드) + PostgreSQL**이며,
-> 인증은 **사내 그룹웨어 SSO / ERP 계정**, 시각은 **KST 단일 기준**을 따른다.
-> 기준 레퍼런스 구현: `PurchaseOrderManagement`, `m_connect`.
+> 인증은 **자체 계정 또는 OIDC SSO**, 시각은 **KST 단일 기준**을 따른다.
 
 ---
 
@@ -45,16 +44,16 @@
 
 | 대상 | 규칙 | 예시 |
 |------|------|------|
-| **저장소/루트 폴더** | `PascalCase` 또는 `snake_case` 일관 유지(프로젝트 내 통일) | `PurchaseOrderManagement`, `m_connect` |
-| **FastAPI app title** | `"<프로젝트> API"` | `FastAPI(title="m_connect API", version="0.1.0")` |
-| **PostgreSQL DB명** | `snake_case`, 프로젝트명 기반 | `m_connect`, `pom` |
-| **DB 테이블명** | `snake_case` **복수형**. 외부(ERP 등) 연동 테이블은 접미사로 출처 표기 | `admins`, `events`, `orders_erp` |
+| **저장소/루트 폴더** | `PascalCase` 또는 `snake_case` 일관 유지(프로젝트 내 통일) | `MyProject`, `my_project` |
+| **FastAPI app title** | `"<프로젝트> API"` | `FastAPI(title="my_project API", version="0.1.0")` |
+| **PostgreSQL DB명** | `snake_case`, 프로젝트명 기반 | `my_project`, `shop` |
+| **DB 테이블명** | `snake_case` **복수형**. 외부 시스템 연동 테이블은 접미사로 출처 표기 | `admins`, `events`, `orders_ext` |
 | **Python 모듈 파일** | `snake_case`, 모델은 **단수** | `order.py`, `auth_service.py` |
 | **프론트 컴포넌트 파일** | `PascalCase.svelte`, 파일명 = 컴포넌트명 | `LoginForm.svelte`, `EventCalendar.svelte` |
 | **프론트 라우트 파일** | SvelteKit 규약 고정(소문자) — `+page.svelte` / `+layout.svelte` / `+layout.ts` | `routes/login/+page.svelte` |
 | **프론트 라우트 디렉토리** | `kebab-case` (URL 세그먼트가 그대로 됨). 라우트 그룹은 괄호 | `routes/my-page/`, `routes/(protected)/` |
 | **환경변수 접두** | 백엔드는 `UPPER_SNAKE`, 프론트는 `VITE_` 필수 | `DATABASE_URL`, `VITE_API_BASE_URL` |
-| **토큰 저장 키** | `<project>_token` / `<project>_access_token` 으로 충돌 방지 | `m_connect_token`, `pom_access_token` |
+| **토큰 저장 키** | `<project>_token` / `<project>_access_token` 으로 충돌 방지 | `my_project_token`, `shop_access_token` |
 
 > 프론트 환경변수는 SvelteKit 의 `$env/static/public` + `PUBLIC_` 이 아니라 **`VITE_` 접두 + `import.meta.env` 를 계속 쓴다.**
 > 이유: 본 스택은 SSR 없는 순수 SPA 이고, 백엔드/원본 프로젝트와 **동일한 `.env` 파일 호환**을 유지하기 위해서다.
@@ -112,7 +111,7 @@
 │   └── vite.config.ts
 ├── docs/
 │   ├── architecture.md          # 본 가이드에서 벗어난 결정/사유 기록
-│   └── <연동>-가이드.md          # 선택 (SSO/ERP 등 외부 연동)
+│   └── <연동>-가이드.md          # 선택 (SSO 등 외부 연동)
 ├── plan.md                      # TDD 작업 순서 (필수)
 ├── .env.example
 └── README.md
@@ -361,7 +360,7 @@ class Order(Base):
 
 - `core/security.py`에 토큰 생성/검증과 `now()`를 둔다.
 - **자체 계정**: access/refresh 토큰 분리(`typ` 클레임), `PyJWT`.
-- **그룹웨어 SSO(OIDC)**: 백엔드가 authorize→callback→userinfo 처리 후 앱 세션 JWT 발급, `python-jose`.
+- **OIDC SSO 연동**: 백엔드가 authorize→callback→userinfo 처리 후 앱 세션 JWT 발급, `python-jose`.
 - 토큰은 `Authorization: Bearer <token>` 헤더. 검증 실패는 401 + `WWW-Authenticate: Bearer`.
 - 최초 로그인 시 `provision_from_userinfo()`로 사용자 upsert(없으면 생성, 식별정보 갱신).
 

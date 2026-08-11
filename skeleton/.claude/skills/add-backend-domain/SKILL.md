@@ -1,6 +1,6 @@
 ---
 name: add-backend-domain
-description: __PROJECT_NAME__ 백엔드에 새 도메인/리소스(예: orders, events)를 추가할 때 사용. 모델 → 마이그레이션 → 스키마 → 서비스 → 얇은 라우터 → 테스트 순서를 사내 아키텍처(architecture.md §4·§8)에 맞춰 TDD로 안내한다.
+description: __PROJECT_NAME__ 백엔드에 새 도메인/리소스(예: orders, events)를 추가할 때 사용. 모델 → 마이그레이션 → 스키마 → 서비스 → 얇은 라우터 → 테스트 순서를 공통 아키텍처(architecture.md §4·§8)에 맞춰 TDD로 안내한다.
 ---
 
 # 백엔드 도메인 추가

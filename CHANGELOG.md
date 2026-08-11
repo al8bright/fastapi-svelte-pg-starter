@@ -1,6 +1,6 @@
 # Changelog
 
-사내 스캐폴드 템플릿 `fastapi-svelte-pg-starter` 의 변경 이력.
+스캐폴드 템플릿 `fastapi-svelte-pg-starter` 의 변경 이력.
 형식은 [Keep a Changelog](https://keepachangelog.com/) 를 느슨히 따른다.
 
 ---

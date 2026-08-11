@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 사내 공통 아키텍처 기반 신규 프로젝트 스캐폴드 (macOS/Linux).
+# 공통 아키텍처 기반 신규 프로젝트 스캐폴드 (macOS/Linux).
 # Windows 는 scaffold.ps1 을 사용한다. 동작은 동일하다.
 #
 # 사용:
@@ -81,12 +81,18 @@ fi
 _PY="$(_ext_ver "$(python3 --version 2>/dev/null || true)")"
 _meets "${MIN_PYTHON:-3.10}" "$_PY" || _need_bootstrap=1
 
+# bootstrap 이 고정한 런타임 버전을 받아둘 임시 폴더 (템플릿 리포를 더럽히지 않기 위함)
+_PIN_DIR=""
 if [ "$_need_bootstrap" = "1" ]; then
   if [ -f "$_BOOTSTRAP" ]; then
     warn "필수 도구(pyenv·fnm) 없거나 Python 버전 미달 — bootstrap.sh 를 먼저 실행합니다 …"
-    bash "$_BOOTSTRAP"
+    _PIN_DIR="$(mktemp -d "${TMPDIR:-/tmp}/scaffold-pin.XXXXXX")"
+    bash "$_BOOTSTRAP" --project-root "$_PIN_DIR" || warn "bootstrap.sh 실패 — 런타임을 수동으로 준비해야 할 수 있습니다."
     _activate_version_managers                                    # bootstrap 후 현재 프로세스에 재적용
-    command -v fnm >/dev/null 2>&1 && fnm use "${MIN_NODE:-24}" 2>/dev/null || true  # Node 버전 명시 활성화
+    # bootstrap 이 고정한 Node 버전을 명시 활성화 (fnm env 만으로는 활성화되지 않는다)
+    if [ -f "$_PIN_DIR/.nvmrc" ] && command -v fnm >/dev/null 2>&1; then
+      fnm use "$(cat "$_PIN_DIR/.nvmrc")" 2>/dev/null || true
+    fi
   else
     warn "bootstrap.sh 를 찾을 수 없습니다 ($_BOOTSTRAP). 수동으로 먼저 실행하세요."
     exit 1
@@ -200,6 +206,13 @@ step "골격 복사 → $TARGET"
 mkdir -p "$TARGET"
 cp -R "$SKELETON_DIR/." "$TARGET/"
 [ $USE_DESIGN -eq 1 ] && cp "$DESIGN_FILE" "$TARGET/docs/DESIGN.md"
+# bootstrap 이 실제로 설치·고정한 런타임 버전을 생성 프로젝트에 반영 (골격의 값은 덮어쓴다)
+if [ -n "$_PIN_DIR" ]; then
+  for _pin in .python-version .nvmrc; do
+    [ -f "$_PIN_DIR/$_pin" ] && cp "$_PIN_DIR/$_pin" "$TARGET/$_pin"
+  done
+  rm -rf "$_PIN_DIR"
+fi
 ok "복사 완료"
 
 # ---------- 3. 토큰 치환 ----------

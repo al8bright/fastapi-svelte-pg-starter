@@ -1,6 +1,6 @@
 # __PROJECT_NAME__
 
-사내 공통 아키텍처(FastAPI · SvelteKit · PostgreSQL) 기반 프로젝트.
+공통 아키텍처(FastAPI · SvelteKit · PostgreSQL) 기반 프로젝트.
 상세 기준은 [`docs/architecture.md`](docs/architecture.md), 작업 순서는 [`plan.md`](plan.md).
 
 ## 기술 스택 (주요 버전, 2026-08-11 기준)
