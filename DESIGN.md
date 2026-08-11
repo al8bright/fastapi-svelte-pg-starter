@@ -1,5 +1,5 @@
 ---
-name: Clinical Precision
+name: Precision UI
 colors:
   surface: '#f8f9fa'
   surface-dim: '#d9dadb'
@@ -119,35 +119,35 @@ spacing:
 ---
 
 ## Brand & Style
-The brand personality is authoritative, sterile, and technologically advanced. This design system targets dental professionals and clinic procurement officers who prioritize reliability, hygiene, and precision. The visual direction follows a **Corporate / Modern** aesthetic with a lean toward **Minimalism**, ensuring that complex medical specifications remain legible and organized. The emotional response should be one of absolute trust and professional "cleanliness," mimicking the high-end environment of a modern dental laboratory. High-density information is balanced with generous whitespace to prevent cognitive overload during procurement workflows.
+The brand personality is precise, composed, and technically confident. This design system targets people who work with dense, structured information — dashboards, admin consoles, and internal operations tools — and who value reliability and clarity over decoration. The visual direction follows a **Corporate / Modern** aesthetic with a lean toward **Minimalism**, ensuring that long lists, detail views, and multi-field forms stay legible and organized. The emotional response should be one of trust and orderliness: the interface feels engineered rather than styled. High information density is balanced with generous whitespace so that operators can scan a screen quickly without cognitive overload during repetitive workflows.
 
 ## Colors
-The palette is rooted in medical professionalism. The primary **Medical Blue (#005EB8)** is used for primary actions, critical branding, and highlighting essential data points. A secondary **Teal (#00A3AD)** is reserved for success states, health-related indicators, or interactive subtle accents. The background architecture relies on a "Laboratory White" and various shades of light gray to create a sterile, high-contrast environment. Darker grays are utilized exclusively for text to ensure AAA accessibility. Surface colors are strictly white to maintain a clinical feel.
+The palette is rooted in a restrained, utilitarian blue. The primary **Deep Blue (#00478D, `primary`)** carries primary actions, brand moments, and the highlighting of key data points, with the brighter **#005EB8 (`primary-container`)** reserved for filled emphasis surfaces and **#005DB6 (`surface-tint`)** driving tonal overlays. The tertiary **Deep Teal (#005055, `tertiary` / #006A71, `tertiary-container`)** marks positive states, completion indicators, and subtle interactive accents, while the neutral **Slate Gray (#575F67, `secondary`)** supports secondary actions and interface chrome. The background architecture rests on a near-white **#F8F9FA (`surface` / `background`)** plus a graded stack of light grays (`surface-container-low` `#F3F4F5` through `surface-container-highest` `#E1E3E4`) to build quiet, high-contrast layers. Dark neutrals are used exclusively for text — `on-surface` `#191C1D` for primary copy and `on-surface-variant` `#424752` for supporting copy — to hold a strong accessibility margin. Interactive cards sit on `surface-container-lowest` (`#FFFFFF`) so they lift off the page, and destructive or invalid states use `error` `#BA1A1A` with the softer `error-container` `#FFDAD6` for inline messaging.
 
 ## Typography
-This design system utilizes **Inter** for its systematic, utilitarian nature and exceptional legibility at small sizes—crucial for technical dental specifications. Headlines use a semi-bold weight with tight letter spacing for a controlled, authoritative look. Body copy is set with generous line-height to ensure readability of long-form clinical documentation. Labels use uppercase styling and increased letter-spacing to clearly differentiate metadata from narrative content.
+This design system uses **Inter** throughout for its systematic, utilitarian character and exceptional legibility at small sizes — essential when technical values, identifiers, and numeric columns must be read without hesitation. Headlines use a semi-bold 600 weight with negative letter-spacing (`display-lg` at 48/56 and -0.02em, `headline-lg` at 32/40 and -0.01em, stepping down to 24/32 on mobile) for a controlled, authoritative look. Body copy is set with generous line-height — 18/28, 16/24, and 14/20 — so that long-form descriptions and help text stay comfortable to read. Labels use a heavier 600 weight at 14px with 0.05em tracking, typically rendered uppercase, to clearly separate metadata and field names from narrative content; `label-sm` at 12/16 handles captions and secondary annotations.
 
 ## Layout & Spacing
-The layout follows a **Fixed Grid** model on desktop (12 columns) and a fluid 4-column model on mobile. A strict 4px baseline grid ensures technical precision in component alignment. 
+The layout follows a **Fixed Grid** model on desktop (12 columns) and a fluid 4-column model on mobile, capped at a 1440px content width. A strict 4px baseline grid (`spacing.base`) keeps component alignment technically precise.
 - **Desktop:** 12 columns, 24px gutters, and 64px outside margins.
 - **Tablet:** 8 columns, 24px gutters, and 32px outside margins.
 - **Mobile:** 4 columns, 16px gutters, and 16px outside margins.
-Vertical rhythm is maintained using 24px increments (md) to separate logical sections of a product page, while 8px (xs) is used for tight groupings of related inputs or technical specs.
+Vertical rhythm is maintained using 24px increments (md) to separate logical sections of a page, while 8px (xs) binds tight groupings of related inputs or key-value pairs. Larger 48px (lg) and 80px (xl) steps mark the boundaries between major regions such as page header, primary content, and footer.
 
 ## Elevation & Depth
-Depth is communicated through **Tonal Layers** and **Low-Contrast Outlines**. In a clinical interface, excessive shadows can feel "muddy." This design system uses a primary method of 1px borders in `#E9ECEF` to define containers. 
-- **Resting state:** Flat, 1px light gray border.
-- **Elevated state (Product Cards):** A very soft, ambient shadow (0px 4px 20px rgba(0,0,0,0.05)) is used only on hover to indicate interactivity.
-- **Overlays (Modals):** High-diffusion shadow (0px 12px 40px rgba(0,0,0,0.1)) to separate critical decision-making layers from the background.
-Surface stacking always moves from darker (background) to lighter (interactive elements).
+Depth is communicated through **Tonal Layers** and **Low-Contrast Outlines**. In a data-dense interface, heavy shadows read as noise, so the primary method is a 1px border in `outline-variant` (`#C2C6D4`) to define containers, with the stronger `outline` (`#727783`) reserved for dividers that must survive at a glance.
+- **Resting state:** Flat, 1px light border, no shadow.
+- **Elevated state (interactive cards, list rows):** A very soft, ambient shadow (0px 4px 20px rgba(0,0,0,0.05)) applied only on hover to signal interactivity.
+- **Overlays (modals, popovers):** High-diffusion shadow (0px 12px 40px rgba(0,0,0,0.1)) to separate decision-making layers from the page behind them.
+Surface stacking always moves from darker (background) to lighter (interactive elements), so the most actionable element on screen is also the brightest.
 
 ## Shapes
-The shape language is **Soft** (roundedness 1). This choice balances the rigidity of medical equipment with a modern, approachable software feel. Standard elements like buttons and input fields use a 4px corner radius. Larger containers, such as product selection cards, utilize 8px (rounded-lg) to soften the overall interface and make the e-commerce experience feel more premium and less industrial.
+The shape language is **Soft** (roundedness 1). This choice balances the rigidity of a data-driven tool with a modern, approachable software feel. Standard elements such as buttons, inputs, and selects use the 4px default radius (`rounded.DEFAULT`, 0.25rem), while 2px (`sm`, 0.125rem) is reserved for the smallest affordances like checkboxes and inline tags. Larger containers — cards, panels, and table wrappers — use 8px (`lg`, 0.5rem) to soften the overall interface, and modals and feature surfaces step up to 12px (`xl`, 0.75rem). Fully rounded shapes (`full`, 9999px) are limited to avatars, badges, and status pills so that roundness itself carries meaning.
 
 ## Components
-- **Buttons:** Primary buttons are solid `#005EB8` with white text. Secondary buttons use a 1px border of the primary color with a transparent background. High-end precision is conveyed through 16px horizontal padding and 12px vertical padding.
-- **Product Selection Cards:** Use a white background, 1px border, and a subtle 0.5s transition to a light shadow on hover. Images must be on a neutral `#F8F9FA` background for consistency.
-- **Hierarchical Navigation:** A vertical "tree" style sidebar for categories. Active categories are indicated with a 3px left-border highlight in Primary Blue.
-- **Option Selection Lists:** For selecting drill bits or material types, use "Row-based" radio buttons with explicit technical labels and a subtle background tint (`#F1F3F5`) on hover.
-- **Input Fields:** Use a 1px `#DDE2E5` border that transitions to the Primary Blue on focus. Labels must be positioned strictly above the field for medical data entry clarity.
-- **Status Chips:** High-contrast background with bold text (e.g., "In Stock" uses light green background with dark green text) to provide instant visual feedback on inventory.
+- **Buttons:** Primary buttons are solid `#00478D` (`primary`) with `on-primary` white text. Secondary buttons use a 1px border of the primary color over a transparent background. Precision is conveyed through 16px horizontal padding and 12px vertical padding on a 4px radius.
+- **Content Cards:** White (`surface-container-lowest`) background, 1px `outline-variant` border, and a 0.5s transition to a light shadow on hover. Media and thumbnails sit on a neutral `#F8F9FA` (`surface`) backdrop for consistency across mixed content.
+- **Hierarchical Navigation:** A vertical "tree" style sidebar for sections and sub-sections. The active entry is indicated with a 3px left-border highlight in the primary blue plus a `surface-container` background.
+- **Option Selection Lists:** For choosing among mutually exclusive settings, filters, or plan variants, use "row-based" radio items with explicit labels, an optional supporting line, and a subtle `surface-container-low` (`#F3F4F5`) background tint on hover.
+- **Input Fields:** A 1px `outline-variant` border that transitions to the primary blue on focus, with `error` used for the invalid state. Labels are positioned strictly above the field for unambiguous data entry, and helper text uses `body-sm` in `on-surface-variant`.
+- **Status Chips:** High-contrast background with bold `label-sm` text (for example, an "Active" chip on a light tertiary background with dark teal text, or a "Failed" chip using `error-container` with `on-error-container`) to give instant visual feedback on record state.
