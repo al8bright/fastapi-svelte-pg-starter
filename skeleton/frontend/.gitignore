@@ -1,0 +1,8 @@
+# SvelteKit / Vite 산출물 (루트 .gitignore 보완)
+.svelte-kit/
+build/
+dist/
+node_modules/
+.env
+.env.*
+!.env.example
