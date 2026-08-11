@@ -42,6 +42,16 @@ function Write-Step($m) { Write-Host "`n=== $m ===" -ForegroundColor Cyan }
 function Write-Ok($m)   { Write-Host "  [OK] $m" -ForegroundColor Green }
 function Write-Warn2($m){ Write-Host "  [!]  $m" -ForegroundColor Yellow }
 
+# 최소 버전 로드 (단일 출처 versions.env — Enable-VersionManagers 의 fnm use 에서도 쓰므로 먼저 읽는다)
+$_Bootstrap   = Join-Path $TemplateDir 'skeleton\scripts\bootstrap.ps1'
+$_VersionsEnv = Join-Path $TemplateDir 'skeleton\scripts\versions.env'
+$_min = @{}
+if (Test-Path $_VersionsEnv) {
+  Get-Content $_VersionsEnv | ForEach-Object {
+    if ($_ -match '^\s*([A-Z_]+)\s*=\s*([0-9.]+)') { $_min[$matches[1]] = $matches[2] }
+  }
+}
+
 # pyenv-win / fnm 활성화 (설치돼 있으면 현재 세션에 적용)
 function Enable-VersionManagers {
   $pyenvRoot = "$env:USERPROFILE\.pyenv\pyenv-win"
@@ -52,20 +62,26 @@ function Enable-VersionManagers {
     $env:Path = "$pyenvRoot\bin;$pyenvRoot\shims;" + ($env:Path -replace [regex]::Escape("$pyenvRoot\bin;") -replace [regex]::Escape("$pyenvRoot\shims;"))
   }
   if (Get-Command fnm -ErrorAction SilentlyContinue) {
-    try { fnm env --use-on-cd | Out-String | Invoke-Expression } catch {}
+    # PS 5.1 은 EAP=Stop 아래에서 네이티브 stderr 한 줄을 NativeCommandError 로 종료 예외화한다
+    # (종료 코드 0 일 때도). 그대로 두면 fnm 이 진행 상황을 stderr 로 쓰는 순간 catch 로 떨어져
+    # Invoke-Expression 이 실행되지 않고 fnm 환경이 조용히 적용되지 않는다 — 이후 pnpm 을 못 찾는다.
+    # 함수 스코프에서만 Continue 로 낮추고 성공/실패는 $LASTEXITCODE 로만 판정한다.
+    $ErrorActionPreference = 'Continue'
+    try {
+      $_fnmEnv = fnm env --use-on-cd 2>&1
+      if ($LASTEXITCODE -eq 0) { $_fnmEnv | Out-String | Invoke-Expression }
+    } catch {}
+    # 템플릿 루트에는 .nvmrc 가 없으므로 최소 Node 버전을 명시해 활성화
+    $_nodeDefault = if ($_min['MIN_NODE']) { $_min['MIN_NODE'] } else { '24' }
+    try {
+      fnm use $_nodeDefault 2>&1 | Out-Null
+      if ($LASTEXITCODE -ne 0) { return }
+    } catch {}
   }
 }
 Enable-VersionManagers
 
 # 필수 도구 확인 — 미달이면 bootstrap.ps1 자동 실행
-$_Bootstrap   = Join-Path $TemplateDir 'skeleton\scripts\bootstrap.ps1'
-$_VersionsEnv = Join-Path $TemplateDir 'skeleton\scripts\versions.env'
-$_min = @{}
-if (Test-Path $_VersionsEnv) {
-  Get-Content $_VersionsEnv | ForEach-Object {
-    if ($_ -match '^\s*([A-Z_]+)\s*=\s*([0-9.]+)') { $_min[$matches[1]] = $matches[2] }
-  }
-}
 function _Get-SemVer([string]$raw) {
   if ($raw -and ($raw -match '(\d+)\.(\d+)')) { return @{ Major=[int]$matches[1]; Minor=[int]$matches[2] } }
   return $null
@@ -76,32 +92,107 @@ function _Meets($have, [string]$minStr) {
   return ($have.Major -gt $mj -or ($have.Major -eq $mj -and $have.Minor -ge $mn))
 }
 
+# bootstrap 이 필요한 기준은 "런타임이 하한 미달"이다 (versions.env 정책: 이상이면 재사용).
+# ⛔ pyenv/fnm 이 없다는 이유만으로 bootstrap 을 강제하지 않는다 — Windows 에서 pyenv-win 은
+# 자동 설치 대상이 아니라, 이미 조건을 만족한 환경까지 골격 생성 전에 막아버린다.
 $_needBootstrap = $false
-if (-not (Get-Command pyenv -ErrorAction SilentlyContinue)) { $_needBootstrap = $true }
-if (-not (Get-Command fnm   -ErrorAction SilentlyContinue)) { $_needBootstrap = $true }
-# 주의: (try {...} catch {...}) 는 인자 자리에서 try 를 명령어로 해석해 실패한다. 문으로 분리한다.
-$_pyRaw = ""
-try { $_pyRaw = (python --version 2>&1 | Out-String) } catch { $_pyRaw = "" }
-$_pyVer = _Get-SemVer $_pyRaw
-# 주의: ?? 는 PowerShell 7 전용 — 5.1 에서는 파싱 단계에서 죽는다. 절대 되돌리지 말 것.
-$_minPy = $_min['MIN_PYTHON']
-if (-not $_minPy) { $_minPy = '3.10' }
-if (-not (_Meets $_pyVer $_minPy)) { $_needBootstrap = $true }
+$_pyVer = _Get-SemVer $(try { python --version 2>&1 | Out-String } catch { "" })
+# PS 5.1 호환: '??'(null 병합, PS7+) 대신 if 식 사용. 폴백은 versions.env 와 동일한 3.13.
+$_minPython = if ($_min['MIN_PYTHON']) { $_min['MIN_PYTHON'] } else { '3.13' }
+if (-not (_Meets $_pyVer $_minPython)) { $_needBootstrap = $true }
+$_nodeHave = _Get-SemVer $(try { node --version 2>&1 | Out-String } catch { "" })
+$_minNode = if ($_min['MIN_NODE']) { $_min['MIN_NODE'] } else { '24' }
+if (-not (_Meets $_nodeHave $_minNode)) { $_needBootstrap = $true }
+$_pnpmHave = _Get-SemVer $(try { pnpm --version 2>&1 | Out-String } catch { "" })
+$_minPnpm = if ($_min['MIN_PNPM']) { $_min['MIN_PNPM'] } else { '11' }
+if (-not (_Meets $_pnpmHave $_minPnpm)) { $_needBootstrap = $true }
+# skeleton\.python-version 핀 처리
+#  - pyenv 가 있으면: 핀된 정확한 버전이 실제 설치돼 있어야 한다(없으면 bootstrap 이 설치).
+#  - pyenv 가 없으면: 핀을 강제할 수단이 없다. 하한을 충족하는 Python 을 그대로 쓰되,
+#    CI 는 .python-version 을 읽으므로 버전이 다르면 경고만 남긴다.
+$_pyPinFile = Join-Path $SkeletonDir '.python-version'
+$_pyPin = if (Test-Path $_pyPinFile) { "$(Get-Content $_pyPinFile -TotalCount 1)".Trim() } else { "" }
+if ($_pyPin) {
+  if (Get-Command pyenv -ErrorAction SilentlyContinue) {
+    if (-not $_needBootstrap) {
+      $_pyenvInstalled = $(try { pyenv versions --bare 2>&1 | Out-String } catch { "" })
+      $_installedList = "$_pyenvInstalled" -split '\r?\n' | ForEach-Object { $_.Trim() }
+      if ($_installedList -notcontains $_pyPin) { $_needBootstrap = $true }
+    }
+  } elseif (-not $_needBootstrap) {
+    $_pyActual = ($(try { python --version 2>&1 | Out-String } catch { "" }) -replace '[^0-9.]', '').Trim()
+    if ($_pyActual -and $_pyActual -ne $_pyPin -and -not $_pyActual.StartsWith("$_pyPin.")) {
+      Write-Warn2 "Python 핀($_pyPin)과 설치본($_pyActual)이 다릅니다 — CI 는 .python-version 을 읽으므로 로컬과 다른 버전을 씁니다."
+      Write-Host "        일치시키려면 pyenv-win 을 설치해 핀 버전을 쓰거나, 생성 후 프로젝트의 .python-version 을 설치본에 맞추세요." -ForegroundColor Yellow
+    }
+  }
+}
 
-# bootstrap 이 고정한 런타임 버전을 받아둘 임시 폴더 (템플릿 리포를 더럽히지 않기 위함)
+# bootstrap 이 고정한 런타임 버전을 받아둘 임시 폴더.
+# ⛔ -ProjectRoot 없이 실행하면 bootstrap 이 템플릿의 skeleton\.python-version·.nvmrc 를
+#    덮어써 리포를 오염시킨다. 임시 폴더에 받아 둔 뒤 복사 단계에서 생성 프로젝트로 옮긴다.
 $_PinDir = $null
 if ($_needBootstrap) {
   if (Test-Path $_Bootstrap) {
-    Write-Warn2 "필수 도구(pyenv-win·fnm) 없거나 Python 버전 미달 — bootstrap.ps1 을 먼저 실행합니다 …"
+    Write-Warn2 "필수 도구 또는 Python·Node·pnpm 버전이 기준 미달 — bootstrap.ps1 을 먼저 실행합니다 …"
     $_PinDir = Join-Path ([System.IO.Path]::GetTempPath()) ("scaffold-pin-" + [guid]::NewGuid().ToString("N").Substring(0,8))
     New-Item -ItemType Directory -Force -Path $_PinDir | Out-Null
-    & $_Bootstrap -ProjectRoot $_PinDir
+    # PS 5.1 은 스크립트/네이티브 명령 실패를 자동 예외화하지 않고, in-process 호출의
+    # $LASTEXITCODE 는 내부 마지막 네이티브 명령의 잔존값이라 신뢰할 수 없다.
+    # → 예외 포착 + bootstrap 결과(실제 런타임 버전) 검증으로 실패를 감지한다 (scaffold.sh 와 동일하게 실패 시 중단).
+    # 검증 기준은 "런타임이 하한을 충족하는가"이지 "pyenv·fnm 이 설치됐는가"가 아니다 —
+    # 관리자 없이 기존 설치본을 재사용하는 경로가 정상 경로이기 때문이다.
+    $_bootstrapOk = $true
+    try { & $_Bootstrap -ProjectRoot $_PinDir } catch {
+      Write-Warn2 "bootstrap.ps1 실행 중 오류: $($_.Exception.Message)"
+      $_bootstrapOk = $false
+    }
     Enable-VersionManagers
-    # bootstrap 후 Node 버전을 현재 세션에 명시 활성화 (fnm env 만으로는 활성화되지 않는다)
-    $_nvmrc = Join-Path $_PinDir ".nvmrc"
-    if (Test-Path $_nvmrc) {
-      $_pinNode = (Get-Content -Raw $_nvmrc).Trim()
-      if ($_pinNode) { try { fnm use $_pinNode 2>$null } catch { } }
+    if ($_bootstrapOk -and (Get-Command fnm -ErrorAction SilentlyContinue)) {
+      $_nodeVer = if ($_min['MIN_NODE']) { $_min['MIN_NODE'] } else { '24' }
+      try {
+        fnm use $_nodeVer 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "종료 코드 $LASTEXITCODE" }
+      } catch {
+        Write-Warn2 "bootstrap 후 Node $_nodeVer 활성화 실패: $($_.Exception.Message)"
+        $_bootstrapOk = $false
+      }
+    }
+    $_pyAfter = _Get-SemVer $(try { python --version 2>&1 | Out-String } catch { "" })
+    if ($_bootstrapOk -and -not (_Meets $_pyAfter $_minPython)) {
+      Write-Warn2 "bootstrap 후에도 Python 이 $_minPython 이상이 아닙니다."
+      $_bootstrapOk = $false
+    }
+    $_nodeAfter = _Get-SemVer $(try { node --version 2>&1 | Out-String } catch { "" })
+    if ($_bootstrapOk -and -not (_Meets $_nodeAfter $_minNode)) {
+      Write-Warn2 "bootstrap 후에도 Node 가 $_minNode 이상이 아닙니다."
+      $_bootstrapOk = $false
+    }
+    $_pnpmAfter = _Get-SemVer $(try { pnpm --version 2>&1 | Out-String } catch { "" })
+    if ($_bootstrapOk -and -not (_Meets $_pnpmAfter $_minPnpm)) {
+      Write-Warn2 "bootstrap 후에도 pnpm 이 $_minPnpm 이상이 아닙니다."
+      $_bootstrapOk = $false
+    }
+    # 핀이 pyenv 에 설치됐는지는 경고 대상이지 중단 사유가 아니다.
+    # bootstrap 이 핀을 설치하지 못해도 하한을 충족하는 Python 으로 폴백했을 수 있고, 그 경우
+    # 위의 런타임 검증을 이미 통과했다. 여기서 중단하면 폴백 경로가 의미를 잃는다.
+    if ($_bootstrapOk -and (Get-Command pyenv -ErrorAction SilentlyContinue)) {
+      $_pyPinFile2 = Join-Path $SkeletonDir '.python-version'
+      if (Test-Path $_pyPinFile2) {
+        $_pyPin2 = "$(Get-Content $_pyPinFile2 -TotalCount 1)".Trim()
+        if ($_pyPin2) {
+          $_installed2 = $(try { pyenv versions --bare 2>&1 | Out-String } catch { "" })
+          $_installedList2 = "$_installed2" -split '\r?\n' | ForEach-Object { $_.Trim() }
+          if ($_installedList2 -notcontains $_pyPin2) {
+            Write-Warn2 "Python 핀 $_pyPin2 이 pyenv 에 없습니다 — 하한을 충족하는 설치본으로 진행합니다. CI 는 핀을 사용합니다."
+          }
+        }
+      }
+    }
+    if (-not $_bootstrapOk) {
+      Write-Warn2 "bootstrap.ps1 실패 — 스캐폴드를 중단합니다. 위 로그의 오류를 해결한 뒤 다시 실행하세요."
+      Remove-Item -Recurse -Force $_PinDir -ErrorAction SilentlyContinue
+      exit 1
     }
   } else {
     Write-Warn2 "bootstrap.ps1 을 찾을 수 없습니다 ($_Bootstrap). 수동으로 먼저 실행하세요."

@@ -47,6 +47,14 @@ step() { printf "\n${c_cyan}=== %s ===${c_reset}\n" "$1"; }
 ok()   { printf "  ${c_green}[OK]${c_reset} %s\n" "$1"; }
 warn() { printf "  ${c_yellow}[!]${c_reset}  %s\n" "$1"; }
 
+# 최소 버전 로드 (단일 출처 versions.env — _activate_version_managers 의 fnm use 에서도 쓰므로 먼저 읽는다)
+_BOOTSTRAP="$SCRIPT_DIR/skeleton/scripts/bootstrap.sh"
+_VERSIONS_ENV="$SCRIPT_DIR/skeleton/scripts/versions.env"
+if [ -f "$_VERSIONS_ENV" ]; then
+  # shellcheck disable=SC1090
+  . "$_VERSIONS_ENV"
+fi
+
 # pyenv / fnm 이 설치돼 있으면 셸 세션에 활성화 (시스템 Python/Node 대신 버전 관리 도구 우선)
 _activate_version_managers() {
   if command -v pyenv >/dev/null 2>&1; then
@@ -57,41 +65,101 @@ _activate_version_managers() {
   fi
   if command -v fnm >/dev/null 2>&1; then
     eval "$(fnm env --use-on-cd 2>/dev/null || true)"
-    # fnm env 는 환경만 준비할 뿐 버전을 활성화하지 않으므로 명시적으로 use
-    fnm use 2>/dev/null || true
+    # 템플릿 루트에는 .nvmrc 가 없으므로 최소 Node 버전을 명시해 활성화
+    fnm use "${MIN_NODE:-24}" 2>/dev/null || true
   fi
 }
 _activate_version_managers
 
 # 필수 도구 확인 — 미달이면 bootstrap.sh 자동 실행
-_BOOTSTRAP="$SCRIPT_DIR/skeleton/scripts/bootstrap.sh"
-_VERSIONS_ENV="$SCRIPT_DIR/skeleton/scripts/versions.env"
 _need_bootstrap=0
 
 _ext_ver(){ printf '%s' "$1" | grep -oE '[0-9]+(\.[0-9]+){0,2}' | head -n1 || true; }
-_meets(){ [ -n "$2" ] && [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | head -n1)" = "$1" ]; }
+_meets(){
+  [ -n "$2" ] || return 1
+  awk -v min="$1" -v have="$2" 'BEGIN {
+    min_n = split(min, min_parts, ".")
+    have_n = split(have, have_parts, ".")
+    n = min_n > have_n ? min_n : have_n
+    for (i = 1; i <= n; i++) {
+      min_part = (i <= min_n ? min_parts[i] : 0) + 0
+      have_part = (i <= have_n ? have_parts[i] : 0) + 0
+      if (have_part > min_part) exit 0
+      if (have_part < min_part) exit 1
+    }
+    exit 0
+  }'
+}
 
-if [ -f "$_VERSIONS_ENV" ]; then
-  # shellcheck disable=SC1090
-  . "$_VERSIONS_ENV"
+# bootstrap 이 필요한 기준은 "런타임이 하한 미달"이다 (versions.env 정책: 이상이면 재사용).
+# ⛔ pyenv/fnm 이 없다는 이유만으로 bootstrap 을 강제하지 않는다 — 이미 조건을 만족한 환경까지
+# 골격 생성 전에 막아버린다.
+_PY="$(_ext_ver "$(python3 --version 2>/dev/null || true)")"
+_meets "${MIN_PYTHON:-3.13}" "$_PY" || _need_bootstrap=1
+_NODE="$(_ext_ver "$(node --version 2>/dev/null || true)")"
+_meets "${MIN_NODE:-24}" "$_NODE" || _need_bootstrap=1
+_PNPM="$(_ext_ver "$(pnpm --version 2>/dev/null || true)")"
+_meets "${MIN_PNPM:-11}" "$_PNPM" || _need_bootstrap=1
+# skeleton/.python-version 핀 처리
+#  - pyenv 가 있으면: 핀된 정확한 버전이 실제 설치돼 있어야 한다(없으면 bootstrap 이 설치 시도).
+#  - pyenv 가 없으면: 핀을 강제할 수단이 없다. 하한을 충족하는 Python 을 쓰되 CI 와의 차이만 경고한다.
+_PY_PIN_FILE="$SKELETON_DIR/.python-version"
+_PY_PIN=""
+[ -f "$_PY_PIN_FILE" ] && _PY_PIN="$(head -n1 "$_PY_PIN_FILE" | tr -d '[:space:]')"
+if [ -n "$_PY_PIN" ]; then
+  if command -v pyenv >/dev/null 2>&1; then
+    if [ "$_need_bootstrap" = "0" ] && ! pyenv versions --bare 2>/dev/null | grep -qx "$_PY_PIN"; then
+      _need_bootstrap=1
+    fi
+  elif [ "$_need_bootstrap" = "0" ]; then
+    case "$_PY" in
+      "$_PY_PIN"|"$_PY_PIN".*) : ;;
+      *)
+        warn "Python 핀($_PY_PIN)과 설치본($_PY)이 다릅니다 — CI 는 .python-version 을 읽으므로 로컬과 다른 버전을 씁니다."
+        printf '        일치시키려면 pyenv 를 설치해 핀 버전을 쓰거나, 생성 후 프로젝트의 .python-version 을 설치본에 맞추세요.\n'
+        ;;
+    esac
+  fi
 fi
 
-! command -v pyenv >/dev/null 2>&1 && _need_bootstrap=1
-! command -v fnm   >/dev/null 2>&1 && _need_bootstrap=1
-_PY="$(_ext_ver "$(python3 --version 2>/dev/null || true)")"
-_meets "${MIN_PYTHON:-3.10}" "$_PY" || _need_bootstrap=1
-
-# bootstrap 이 고정한 런타임 버전을 받아둘 임시 폴더 (템플릿 리포를 더럽히지 않기 위함)
+# bootstrap 이 고정한 런타임 버전을 받아둘 임시 폴더.
+# ⛔ --project-root 없이 실행하면 bootstrap 이 템플릿의 skeleton/.python-version·.nvmrc 를
+#    덮어써 리포를 오염시킨다. 임시 폴더에 받아 두었다가 복사 단계에서 생성 프로젝트로 옮긴다.
 _PIN_DIR=""
 if [ "$_need_bootstrap" = "1" ]; then
   if [ -f "$_BOOTSTRAP" ]; then
-    warn "필수 도구(pyenv·fnm) 없거나 Python 버전 미달 — bootstrap.sh 를 먼저 실행합니다 …"
+    warn "필수 도구 또는 Python·Node·pnpm 버전이 기준 미달 — bootstrap.sh 를 먼저 실행합니다 …"
     _PIN_DIR="$(mktemp -d "${TMPDIR:-/tmp}/scaffold-pin.XXXXXX")"
-    bash "$_BOOTSTRAP" --project-root "$_PIN_DIR" || warn "bootstrap.sh 실패 — 런타임을 수동으로 준비해야 할 수 있습니다."
+    bash "$_BOOTSTRAP" --project-root "$_PIN_DIR"
+    _rc=$?
+    if [ "$_rc" -ne 0 ]; then
+      warn "bootstrap.sh 실패 (종료 코드 $_rc) — 스캐폴드를 중단합니다. 위 로그의 오류를 해결한 뒤 다시 실행하세요."
+      rm -rf "$_PIN_DIR"
+      exit 1
+    fi
     _activate_version_managers                                    # bootstrap 후 현재 프로세스에 재적용
-    # bootstrap 이 고정한 Node 버전을 명시 활성화 (fnm env 만으로는 활성화되지 않는다)
-    if [ -f "$_PIN_DIR/.nvmrc" ] && command -v fnm >/dev/null 2>&1; then
-      fnm use "$(cat "$_PIN_DIR/.nvmrc")" 2>/dev/null || true
+    command -v fnm >/dev/null 2>&1 && fnm use "${MIN_NODE:-24}" 2>/dev/null || true  # Node 버전 명시 활성화
+
+    # 검증 기준은 "런타임이 하한을 충족하는가"이지 "pyenv·fnm 이 설치됐는가"가 아니다 —
+    # 관리자 없이 기존 설치본을 재사용하는 경로가 정상 경로이기 때문이다.
+    _bootstrap_ok=1
+    _PY="$(_ext_ver "$(python3 --version 2>/dev/null || true)")"
+    _meets "${MIN_PYTHON:-3.13}" "$_PY" || { warn "bootstrap 후에도 Python 이 ${MIN_PYTHON:-3.13} 이상이 아닙니다."; _bootstrap_ok=0; }
+    _NODE="$(_ext_ver "$(node --version 2>/dev/null || true)")"
+    _meets "${MIN_NODE:-24}" "$_NODE" || { warn "bootstrap 후에도 Node 가 ${MIN_NODE:-24} 이상이 아닙니다."; _bootstrap_ok=0; }
+    _PNPM="$(_ext_ver "$(pnpm --version 2>/dev/null || true)")"
+    _meets "${MIN_PNPM:-11}" "$_PNPM" || { warn "bootstrap 후에도 pnpm 이 ${MIN_PNPM:-11} 이상이 아닙니다."; _bootstrap_ok=0; }
+    # 핀이 pyenv 에 설치됐는지는 경고 대상이지 중단 사유가 아니다. bootstrap 이 핀을 설치하지
+    # 못해도 하한을 충족하는 Python 으로 폴백했을 수 있고, 위 런타임 검증을 이미 통과했다.
+    if [ -n "$_PY_PIN" ] && command -v pyenv >/dev/null 2>&1; then
+      if ! pyenv versions --bare 2>/dev/null | grep -qx "$_PY_PIN"; then
+        warn "Python 핀 $_PY_PIN 이 pyenv 에 없습니다 — 하한을 충족하는 설치본으로 진행합니다. CI 는 핀을 사용합니다."
+      fi
+    fi
+    if [ "$_bootstrap_ok" != "1" ]; then
+      warn "bootstrap 후 필수 도구 검증 실패 — 스캐폴드를 중단합니다."
+      rm -rf "$_PIN_DIR"
+      exit 1
     fi
   else
     warn "bootstrap.sh 를 찾을 수 없습니다 ($_BOOTSTRAP). 수동으로 먼저 실행하세요."
