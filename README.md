@@ -60,21 +60,33 @@ mindmap
 
 ```mermaid
 flowchart TD
-    A["scaffold.sh / scaffold.ps1 실행"] --> B{"런타임 최소 버전 충족?"}
-    B -- 아니오 --> C["bootstrap: pyenv·fnm 으로 Python·Node 준비"]
-    B -- 예 --> D["프로젝트명 입력 → snake_case 변환"]
-    C --> D
-    D --> E{"DESIGN.md 적용?"}
-    E -- 예 --> F["colors·typography → Tailwind @theme 생성"]
-    E -- 아니오 --> G["기본 테마 사용"]
-    F --> H["skeleton 복사 + 토큰 치환"]
-    G --> H
-    H --> I["backend/.env · frontend/.env 생성"]
-    I --> J["백엔드 venv + pip install"]
-    J --> K["psql 로 DB 생성 → alembic upgrade head"]
-    K --> L["프론트 pnpm install"]
-    L --> M["실행 방법 안내 출력"]
+    A["scaffold.sh / scaffold.ps1 실행"] --> B{"Python·Node·pnpm 이 하한을 충족하나?"}
+    B -- 예 --> E["프로젝트명 입력 → snake_case 변환"]
+    B -- 아니오 --> C["bootstrap 실행 — 핀 버전은 임시 폴더에 기록"]
+    C --> D{"bootstrap 성공 + 재검증 통과?"}
+    D -- 아니오 --> X["오류 안내 후 중단 — 골격을 만들지 않는다"]
+    D -- 예 --> E
+    E --> F{"DESIGN.md 적용?"}
+    F -- 예 --> G["colors·typography → Tailwind @theme 생성"]
+    F -- 아니오 --> H["기본 테마 사용"]
+    G --> I["skeleton 복사 + 토큰 치환 + 핀 파일 이관"]
+    H --> I
+    I --> J["backend/.env · frontend/.env 생성"]
+    J --> K{"--skip-install?"}
+    K -- 아니오 --> L["백엔드 venv + pip install"]
+    K -- 예 --> M{"--skip-db?"}
+    L --> M
+    M -- 아니오 --> N{"psql 로 DB 접속 가능?"}
+    N -- 예 --> O["DB 생성 또는 재사용 → alembic upgrade head"]
+    N -- 아니오 --> P["수동 DB 작업 안내"]
+    M -- 예 --> Q["프론트 pnpm install"]
+    O --> Q
+    P --> Q
+    Q --> R["실행 방법 안내 출력"]
 ```
+
+> `--skip-db`·`--skip-install` 은 해당 단계만 건너뛴다.
+> **런타임 사전 검사와 bootstrap 선행 실행은 두 옵션으로 생략되지 않는다.**
 
 ### 만들어진 앱이 실제로 도는 모습
 
@@ -171,14 +183,15 @@ chmod +x scaffold.sh          # 최초 1회 (실행 권한이 없을 때)
 
 ### 스크립트가 하는 일 (전체 자동)
 
-1. 이름/위치 입력 → `PascalCase`를 `snake_case`(DB명·토큰키)로 변환
-2. **DESIGN.md 적용 여부 질문** → 적용 시 `colors`/`typography`를 Tailwind `@theme`로 변환해 `frontend/src/app.css`에 주입(+`docs/DESIGN.md` 복사)
-3. `skeleton/` 복사 + 토큰 치환(`__PROJECT_NAME__`, `<프로젝트명>`, 테마)
-4. **PostgreSQL 접속정보(host/port/user/password/db) 질문** → `backend/.env`·`frontend/.env` 생성(`DATABASE_URL`·`SECRET_KEY` 주입)
-5. 백엔드: `python -m venv .venv` + `pip install -r requirements.txt`
-6. **psql 로 DB 생성** → **Alembic `upgrade head` 로 테이블 생성**(DB는 항상 Alembic으로 관리 §11)
-7. 프론트: `pnpm install`
-8. 실행 방법(`uvicorn`, `pnpm dev`) 출력
+1. **런타임 사전 검사** → 하한 미달이면 bootstrap 실행 후 재검증, 실패하면 골격 복사 전에 중단
+2. 이름/위치 입력 → `PascalCase`를 `snake_case`(DB명·토큰키)로 변환
+3. **DESIGN.md 적용 여부 질문** → 적용 시 `colors`/`typography`를 Tailwind `@theme`로 변환해 `frontend/src/app.css`에 주입(+`docs/DESIGN.md` 복사)
+4. `skeleton/` 복사 + 토큰 치환(`__PROJECT_NAME__`, `__PROJECT_SNAKE__`, 테마) + 런타임 핀 파일 이관
+5. **PostgreSQL 접속정보(host/port/user/password/db) 질문** → `backend/.env`·`frontend/.env` 생성(`DATABASE_URL`·`SECRET_KEY` 주입)
+6. 백엔드: `python -m venv .venv` + `pip install -r requirements.txt`
+7. **psql 로 DB 생성** → **Alembic `upgrade head` 로 테이블 생성**(DB는 항상 Alembic으로 관리 §11)
+8. 프론트: `pnpm install`
+9. 실행 방법(`uvicorn`, `pnpm dev`) 출력
 
 ### 옵션 플래그
 
