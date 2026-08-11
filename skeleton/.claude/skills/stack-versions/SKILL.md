@@ -20,7 +20,15 @@ description: __PROJECT_NAME__ 의 고정 스택 버전과 버전별 주의사항
 ## 3. ⚠️ 버전별 함정 (코드·설정 작성 시 반드시)
 
 ### pnpm 10+ (현재 11)
-- 의존성 **빌드 스크립트가 기본 차단**된다. 허용은 `frontend/pnpm-workspace.yaml` 의 **`onlyBuiltDependencies`** 리스트로 한다. ⛔ `allowBuilds` 같은 키는 인식되지 않음. (현재: `esbuild`, `@tailwindcss/oxide` — **안전망 용도**. Vite 8 은 esbuild 대신 rolldown 을 쓰므로 esbuild 는 트리에 아예 없고, `@tailwindcss/oxide` 도 플랫폼 바이너리를 미리 받아 실제 실행되는 postinstall 이 없다.)
+- 의존성 **빌드 스크립트가 기본 차단**된다. 허용은 `frontend/pnpm-workspace.yaml` 의 **`allowBuilds` 맵**으로 한다.
+  ⚠️ **pnpm 11 에서 키가 바뀌었다** — pnpm 10 의 리스트형 `onlyBuiltDependencies` 는 **더 이상 인식되지 않는다.**
+  그대로 두면 `ERR_PNPM_IGNORED_BUILDS` 가 나고, **pnpm 이 이 파일에 `allowBuilds` 맵을 자동으로 끼워 넣어 템플릿을 오염시킨다**(실측 확인).
+  ```yaml
+  allowBuilds:
+    esbuild: true
+    '@tailwindcss/oxide': true
+  ```
+  (현재 목록은 **안전망 용도**다. Vite 8 은 esbuild 대신 rolldown 을 쓰므로 esbuild 는 트리에 아예 없고, `@tailwindcss/oxide` 도 플랫폼 바이너리를 미리 받아 실제 실행되는 postinstall 이 없다.)
 - ⚠️ pnpm 11 의 **`minimum-release-age` 기본값이 24시간**이다(`pnpm config get` 은 `undefined` 로 보이지만 내부 기본값이 있다).
   **배포 24시간 이내 버전을 `^` 로 핀하면 `pnpm install` 이 `pnpm-workspace.yaml` 에 `minimumReleaseAgeExclude:` 블록을 자동으로 써 넣어 템플릿 파일이 오염된다.**
   (실제 사례: `typescript-eslint@^8.67.0`(전날 배포) → exclude 11줄 삽입. `^8.66.0` 으로 한 단계 낮춰 회피.)

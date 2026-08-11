@@ -1,9 +1,12 @@
-# pnpm 10+ : 의존성 빌드 스크립트 허용 (네이티브 바이너리 링크).
-# 없으면 'pnpm install' 이 ERR_PNPM_IGNORED_BUILDS 로 비정상 종료할 수 있다.
-# (올바른 키는 onlyBuiltDependencies 리스트 — allowBuilds 는 인식되지 않음)
+# pnpm 11 : 의존성 빌드 스크립트 허용 (네이티브 바이너리 링크).
+# 허용하지 않으면 'pnpm install' 이 ERR_PNPM_IGNORED_BUILDS 를 낸다.
+#
+# ⚠️ pnpm 11 에서 키가 바뀌었다. pnpm 10 의 리스트형 onlyBuiltDependencies 는 더 이상 인식되지 않고,
+#    그대로 두면 pnpm 이 이 파일에 allowBuilds 맵을 자동으로 끼워 넣는다(= 템플릿 오염).
+#    처음부터 allowBuilds 맵으로 둔다.
 #
 # 현재 조합(Vite 8/Rolldown + Tailwind v4)에서는 네이티브 바이너리가 optionalDependencies 로
-# 미리 빌드되어 오므로 실제로 실행되는 postinstall 은 없다. 아래 목록은 안전망으로 남겨 둔다.
-onlyBuiltDependencies:
-  - esbuild
-  - '@tailwindcss/oxide'
+# 미리 빌드되어 오므로 실제로 실행되는 postinstall 이 없다. 아래 목록은 안전망으로 남겨 둔다.
+allowBuilds:
+  esbuild: true
+  '@tailwindcss/oxide': true
