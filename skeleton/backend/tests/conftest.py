@@ -38,6 +38,8 @@ def db_session():
     finally:
         session.close()
         Base.metadata.drop_all(bind=engine)
+        # StaticPool 의 단일 sqlite 연결을 명시적으로 닫는다(미해제 시 ResourceWarning).
+        engine.dispose()
 
 
 @pytest.fixture

@@ -1,4 +1,4 @@
-import { browser } from "$app/environment"
+import { browser } from "$app/env"
 
 // 토큰 저장소 (ARCHITECTURE.md §14). 키는 프로젝트별로 분리한다.
 // SPA(ssr = false)라도 build 의 prerender 단계는 Node 에서 돌아 localStorage 가 없다 → browser 가드 필수.

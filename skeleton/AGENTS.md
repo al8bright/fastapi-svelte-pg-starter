@@ -14,7 +14,7 @@
 
 ## 반드시 지킨다 (시작 전 확인 — 상세는 ARCHITECTURE.md ★MUST 요약)
 
-- **스택 고정**: FastAPI + SQLAlchemy 2.0 + Alembic / SvelteKit(SPA) + Svelte 5 + TS / **PostgreSQL** (정확한 버전·버전별 주의는 [stack-versions] 스킬)
+- **스택 고정**: FastAPI + SQLAlchemy 2.1 + Alembic / SvelteKit(SPA) + Svelte 5 + TS / **PostgreSQL** (정확한 버전·버전별 주의는 [stack-versions] 스킬)
 - **DB는 항상 Alembic으로만 관리** — 런타임 `create_all`·자동 DDL·수동 `ALTER` 금지(테스트 in-memory만 예외)
 - **설정은 OS 무관 `.env`로 주입** — `$env:`/`export`/`set` 셸 환경변수 의존 금지, `.env` 커밋 금지(`.env.example`만)
 - **시각 KST 단일 기준** — naive `datetime.now()`, PostgreSQL `timezone=Asia/Seoul`, 런타임 `TZ=Asia/Seoul`

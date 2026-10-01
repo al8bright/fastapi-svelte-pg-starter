@@ -1,4 +1,4 @@
-import { api } from "$lib/api/client"
+import { api } from "#lib/api/client.js"
 
 // 인증 API (ARCHITECTURE.md §13, §14).
 export type UserRole = "user" | "admin"

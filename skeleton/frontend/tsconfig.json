@@ -1,26 +1,17 @@
 {
-  "extends": "./.svelte-kit/tsconfig.json",
+  "extends": "$app/tsconfig",
   "compilerOptions": {
     "target": "ES2022",
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "module": "ESNext",
-    "moduleResolution": "bundler",
-    "skipLibCheck": true,
-    "allowJs": true,
-    "checkJs": true,
-    "esModuleInterop": true,
-    "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true,
-    "verbatimModuleSyntax": true,
-    "moduleDetection": "force",
-    "isolatedModules": true,
-    "noEmit": true,
 
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true
-  }
-  // path 별칭($lib 등)과 include/exclude 는 .svelte-kit/tsconfig.json 이 관리한다.
-  // svelte-kit sync 가 생성하므로 'pnpm check' 는 sync 를 먼저 돌린다.
+  },
+  "include": ["src"]
+  // SvelteKit 3: 기반 설정은 $app/tsconfig(node_modules/$app, svelte-kit sync 가 생성)가 관리한다.
+  // (moduleResolution·verbatimModuleSyntax·isolatedModules 등은 거기서 온다.)
+  // #lib 별칭은 package.json "imports" 로 해석된다 — paths/baseUrl 을 직접 쓰지 말 것.
 }

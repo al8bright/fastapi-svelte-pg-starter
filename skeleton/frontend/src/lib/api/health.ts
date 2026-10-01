@@ -1,4 +1,4 @@
-import { api } from "$lib/api/client"
+import { api } from "#lib/api/client.js"
 
 // 도메인별 API 함수 (ARCHITECTURE.md §13).
 export interface DbHealth {

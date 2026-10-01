@@ -1,6 +1,6 @@
 <script lang="ts">
   import { resolve } from "$app/paths"
-  import { createDbHealth, createHealth } from "$lib/queries/health"
+  import { createDbHealth, createHealth } from "#lib/queries/health.js"
 
   // 랜딩(시스템 상태) 화면 (ARCHITECTURE.md §14). 백엔드 / DB 연결 상태를 보여 준다.
   const health = createHealth()
@@ -60,7 +60,7 @@
 
     <footer class="mt-8 text-center text-sm text-on-surface-variant">
       다음 단계: <code class="font-mono">PLAN.md</code> 순서대로 TDD 로 개발을 시작하세요.
-      <a href={resolve("/")} class="mt-3 block text-on-surface-variant hover:text-on-surface">
+      <a href={resolve("")} class="mt-3 block text-on-surface-variant hover:text-on-surface">
         ← 메인으로
       </a>
     </footer>

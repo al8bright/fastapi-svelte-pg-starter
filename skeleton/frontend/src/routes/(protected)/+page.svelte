@@ -1,6 +1,6 @@
 <script lang="ts">
   import { resolve } from "$app/paths"
-  import { createMe } from "$lib/queries/auth"
+  import { createMe } from "#lib/queries/auth.js"
 
   // 메인 화면 (로그인 후 홈). 랜딩(시스템 상태) / My 로 이동.
   const me = createMe()
@@ -18,7 +18,7 @@
 
     <div class="mt-8 grid gap-3">
       <a
-        href={resolve("/landing")}
+        href={resolve("landing")}
         class="rounded-lg border border-outline-variant bg-surface-container-lowest px-5 py-4 text-left font-semibold text-on-surface hover:border-primary"
       >
         시스템 상태(랜딩) →
@@ -27,7 +27,7 @@
         </span>
       </a>
       <a
-        href={resolve("/my")}
+        href={resolve("my")}
         class="rounded-lg border border-outline-variant bg-surface-container-lowest px-5 py-4 text-left font-semibold text-on-surface hover:border-primary"
       >
         My →

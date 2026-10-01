@@ -3,9 +3,9 @@
 공통 아키텍처(FastAPI · SvelteKit · PostgreSQL) 기반 프로젝트.
 상세 기준은 [`ARCHITECTURE.md`](ARCHITECTURE.md), 작업 순서는 [`PLAN.md`](PLAN.md), 디자인 토큰은 [`DESIGN.md`](DESIGN.md), AI 에이전트 지침은 [`AGENTS.md`](AGENTS.md), 프로젝트 고유 문서(PRD 등)는 [`docs/`](docs/README.md).
 
-## 기술 스택 (주요 버전, 2026-08-11 기준)
+## 기술 스택 (주요 버전, 2026-10-02 기준)
 
-> 아래 표는 **2026-08-11 기준** 요약이며, **정확한 출처(SSOT)** 는 다음 파일이다 — 변경 시 이 표가 아니라 해당 파일을 기준으로 한다:
+> 아래 표는 **2026-10-02 기준** 요약이며, **정확한 출처(SSOT)** 는 다음 파일이다 — 변경 시 이 표가 아니라 해당 파일을 기준으로 한다:
 > 런타임 [`scripts/versions.env`](scripts/versions.env) · 백엔드 [`backend/requirements.txt`](backend/requirements.txt) · 프론트 [`frontend/package.json`](frontend/package.json)
 
 ### 런타임
@@ -19,35 +19,35 @@
 ### 백엔드 (`==` 정확히 핀, 재현성 우선)
 | 패키지 | 버전 |
 |--------|------|
-| FastAPI | 0.137.2 |
-| Uvicorn | 0.49.0 |
-| SQLAlchemy | 2.0.51 |
-| Alembic | 1.18.5 |
-| psycopg2-binary | 2.9.12 |
-| Pydantic / pydantic-settings | 2.13.4 / 2.14.2 |
-| PyJWT | 2.13.0 |
-| bcrypt | 4.3.0 |
-| httpx2 | 2.5.0 |
+| FastAPI | 0.142.2 |
+| Uvicorn | 0.54.0 |
+| SQLAlchemy | 2.1.1 |
+| Alembic | 1.20.0 |
+| psycopg2-binary | 2.9.13 |
+| Pydantic / pydantic-settings | 2.13.5 / 2.15.0 |
+| PyJWT | 2.15.1 |
+| bcrypt | 5.0.0 |
+| httpx2 | 2.13.1 |
 | pytest | 9.1.1 |
-| ruff | 0.14.0 |
+| ruff | 0.16.9 |
 
 ### 프론트엔드 (`^` 범위 핀)
 | 패키지 | 버전 |
 |--------|------|
-| Svelte | 5.56 |
-| SvelteKit (`@sveltejs/kit`) | 2.70 |
-| @sveltejs/adapter-static | 3.0 |
+| Svelte | 5.57 |
+| SvelteKit (`@sveltejs/kit`) | 3.0 |
+| @sveltejs/adapter-static | 4.0 |
 | @sveltejs/vite-plugin-svelte | 7.3 |
-| Vite | 8.2 (Rolldown) |
+| Vite | 8.3 (Rolldown) |
 | TypeScript | 6.0 |
 | svelte-check | 4.7 |
 | Tailwind CSS | 4.3 |
 | @tailwindcss/vite | 4.3 |
-| @tanstack/svelte-query | 6.1 |
-| axios | 1.19 |
-| ESLint | 10.8 |
-| typescript-eslint | 8.66 |
-| eslint-plugin-svelte | 3.22 |
+| @tanstack/svelte-query | 6.3 |
+| axios | 1.20 |
+| ESLint | 10.11 |
+| typescript-eslint | 8.71 |
+| eslint-plugin-svelte | 3.23 |
 
 ## 사전 요구사항 (최초 1회)
 

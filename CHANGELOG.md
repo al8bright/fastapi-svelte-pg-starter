@@ -5,6 +5,39 @@
 
 ---
 
+## 2026-10-02
+
+의존성 전체를 최신 안정판으로 상향했다. 프론트는 **SvelteKit 3 메이저 마이그레이션**을 포함한다.
+
+### Changed (변경)
+
+- **백엔드 핀 상향** — FastAPI 0.142.2 · Uvicorn 0.54.0 · SQLAlchemy 2.1.1 · Alembic 1.20.0 · psycopg2-binary 2.9.13 · Pydantic 2.13.5 / pydantic-settings 2.15.0 · PyJWT 2.15.1 · bcrypt 5.0.0 · httpx2 2.13.1 · ruff 0.16.9 (python-multipart 0.0.32 · pytest 9.1.1 은 유지).
+- **프론트 상향** — `@sveltejs/kit` ^3.0.0 · `@sveltejs/adapter-static` ^4.0.0 · svelte ^5.57.1 · vite ^8.3.2 · `@sveltejs/vite-plugin-svelte` ^7.3.1 · `@tanstack/svelte-query` ^6.3.0 · axios ^1.20.0 · eslint ^10.11.0 · typescript-eslint ^8.71.0 · eslint-plugin-svelte ^3.23.0 · globals ^17.13.0 · svelte-check ^4.7.6 · `@types/node` ^24.19.0 · `packageManager` pnpm@11.28.3. typescript 는 `~6.0.3` 유지(TS 7 비호환).
+- **SvelteKit 3 마이그레이션** — `svelte.config.js` 를 삭제하고 adapter·preprocess 설정을 `vite.config.ts` 의 `sveltekit({ ... })` 옵션으로 옮겼다. `$lib` 별칭을 `package.json` `"imports"` 의 `#lib/*`(확장자 `.js` 명시)로, `$app/environment` 를 `$app/env` 로 교체했다. `resolve()` 경로를 Kit 3 pathname 형식(`"login"`, 루트 `""`)으로 바꾸고, `tsconfig.json` 은 `$app/tsconfig` 를 상속한다. eslint 는 `@sveltejs/load-config` 로 svelte 설정을 읽는다(devDependency 추가).
+- **ruff 0.16 대응** — `UserRole` 을 `enum.StrEnum` 으로 변경(UP042). 값·DB 저장 동작은 같다.
+- **Alembic 경고 제거** — `alembic.ini` 에 `path_separator = os` 를 추가했다(Alembic 1.16+ DeprecationWarning).
+- **문서·스킬** — `README` 버전 표, `docs/architecture.md`, `CLAUDE.md`, `add-frontend-feature`·`add-backend-domain`·`stack-versions` 스킬을 새 버전과 SvelteKit 3 규칙(`#lib`, `$app/env`, `resolve()` 형식, 설정 위치)에 맞췄다. `stack-versions` 에 SvelteKit 3 · bcrypt 5 · SQLAlchemy 2.1/Alembic · ruff 0.16 주의사항을 추가했다.
+
+### Added (추가)
+
+- **bcrypt 5 회귀 테스트** — bcrypt 5 는 72바이트 초과 입력에 `ValueError` 를 던진다. 기존 바이트 상한 검증으로 500 이 아닌 422 가 반환되는지(영문 73바이트, 한글 25자), `hash_password` 거부, `verify_password` 의 절단 우회 차단을 테스트로 고정했다(총 10건).
+
+### Fixed (수정)
+
+- 테스트 픽스처에서 SQLite 엔진을 `dispose()` 하지 않아 `-W error` 실행 시 `ResourceWarning` 으로 실패하던 문제를 고쳤다.
+
+### 검증
+
+- 임시 프로젝트(Windows)에서 `ruff check` · `pytest`(10건, `-W error` 포함) · PostgreSQL 16 상대 `alembic upgrade head`/`downgrade base`/`check` · `pnpm install`/`lint`/`check`/`build` 를 모두 통과했다. `pnpm-workspace.yaml` 은 검증 설치로 변경되지 않았다.
+
+### 남은 후속 (미진행)
+
+- `@sveltejs/kit@3.0.0` · `@sveltejs/adapter-static@4.0.0` 은 2026-10-01 17:20 UTC 에 배포돼 pnpm 11 의 `minimum-release-age`(24시간)에 걸린다. **2026-10-02 17:22 UTC 이전**에 새 프로젝트를 만들면 `pnpm install` 이 `pnpm-workspace.yaml` 에 `minimumReleaseAgeExclude` 를 자동 삽입한다. 그 이후에는 해소되며 템플릿에는 exclude 를 넣지 않았다.
+- `eslint-plugin-svelte@3.23` 의 SvelteKit 전용 규칙(`svelte/no-navigation-without-resolve` 등)은 Kit 1·2 에서만 동작해 Kit 3 에서는 비활성이다. 플러그인이 Kit 3 를 지원하면 다시 확인한다.
+- Windows PowerShell 5.1 에서 `scripts/bootstrap.ps1` 이 파싱 오류(184행 `Unexpected token '}'`)로 실행되지 않는다. BOM 없는 UTF-8 한글 파일을 5.1 이 ANSI 로 읽는 문제로 보이며, 이번 범위에서는 고치지 않았다.
+
+---
+
 ## 2026-10-02 — 기본 문서 세트 정리 (AGENTS.md 도입, 문서 루트 배치)
 
 생성 프로젝트의 기준 문서 6종을 골격 루트에 두고, `docs/` 는 프로젝트 고유 문서(PRD·유저 플로우·기획서 등) 전용으로 비웠다.

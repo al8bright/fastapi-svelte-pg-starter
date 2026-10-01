@@ -227,6 +227,23 @@ chmod +x scaffold.sh          # 최초 1회 (실행 권한이 없을 때)
 
 ## 검증 상태
 
+### 2026-10-02 의존성 상향 재검증 (Windows 11, Python 3.13.12 / Node 24.14.0 / pnpm 11.28.3)
+
+SvelteKit 3 · SQLAlchemy 2.1 · bcrypt 5 등으로 올린 뒤 임시 프로젝트에서 다시 확인한 결과다(상세 버전은 `skeleton/README.md` 표).
+
+- 스캐폴드: Python 핀(3.13.14) 미설치로 `scaffold.ps1` 이 `bootstrap.ps1` 을 호출하는데, Windows PowerShell 5.1 에서
+  `bootstrap.ps1` 파싱 오류로 중단됐다. 그래서 `skeleton/` 을 복사하고 토큰 3종을 직접 치환해 검증했다(아래 "미검증" 참고).
+- 백엔드: `ruff check .` 통과, `pytest -q` 10건 통과(`-W error` 로도 통과)
+- Alembic: PostgreSQL 16(docker) 상대로 `upgrade head` / `downgrade base` / `upgrade head` / `alembic check`("No new upgrade operations detected") 통과
+- 구동: PostgreSQL 연결 상태에서 `/api/v1/health/db` 200, 관리자 로그인 200 → `/auth/me` 200, 72바이트 초과 비밀번호 로그인 422
+- 프론트: `pnpm install` · `pnpm lint` · `pnpm check`(svelte-check 298 파일 0 error 0 warning) · `pnpm build` 모두 exit 0,
+  `vite preview` 로 `/`·`/login`·`/landing`·`/my` 200 확인. 단 `@sveltejs/kit@3.0.0` 이 배포 24시간 이내라
+  `pnpm_config_minimum_release_age=0` 으로 우회해 검증했다 — **2026-10-02 17:22 UTC 이전의 신규 설치는 pnpm 이
+  `pnpm-workspace.yaml` 에 `minimumReleaseAgeExclude` 블록을 자동 삽입한다**(그 이후엔 해소).
+- 브라우저 실제 렌더링은 이번에 다시 확인하지 않았다.
+
+### 2026-08-11 최초 검증 (macOS)
+
 아래는 macOS(Darwin 25.5, Python 3.13.14 / Node 24.18.0 / pnpm 11.9.0)에서
 `scaffold.sh` 로 실제 프로젝트를 생성해 확인한 결과다.
 

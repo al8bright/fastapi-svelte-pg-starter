@@ -1,5 +1,5 @@
 import { createQuery } from "@tanstack/svelte-query"
-import { getDbHealth, getHealth } from "$lib/api/health"
+import { getDbHealth, getHealth } from "#lib/api/health.js"
 
 // svelte-query 쿼리 (ARCHITECTURE.md §13).
 export function createHealth() {

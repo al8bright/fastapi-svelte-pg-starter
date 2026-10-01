@@ -1,8 +1,8 @@
 <script lang="ts">
   import { goto } from "$app/navigation"
   import { resolve } from "$app/paths"
-  import { createLogin } from "$lib/queries/auth"
-  import { authStore } from "$lib/stores/auth.svelte"
+  import { createLogin } from "#lib/queries/auth.js"
+  import { authStore } from "#lib/stores/auth.svelte.js"
 
   // 로그인 화면 (ARCHITECTURE.md §14). 성공 시 메인(/)으로 이동.
   const loginMutation = createLogin()
@@ -12,14 +12,14 @@
 
   // 이미 로그인 상태면 메인으로.
   $effect(() => {
-    if (authStore.isAuthenticated) goto(resolve("/"), { replaceState: true })
+    if (authStore.isAuthenticated) goto(resolve(""), { replaceState: true })
   })
 
   const onSubmit = (e: SubmitEvent) => {
     e.preventDefault()
     loginMutation.mutate(
       { username, password },
-      { onSuccess: () => goto(resolve("/"), { replaceState: true }) },
+      { onSuccess: () => goto(resolve(""), { replaceState: true }) },
     )
   }
 </script>

@@ -2,7 +2,10 @@ import js from "@eslint/js"
 import svelte from "eslint-plugin-svelte"
 import globals from "globals"
 import tseslint from "typescript-eslint"
-import svelteConfig from "./svelte.config.js"
+import { loadConfig } from "@sveltejs/load-config"
+
+// SvelteKit 3 은 svelte.config.js 가 없다 — vite.config.ts 의 sveltekit(...) 옵션을 읽어 eslint-plugin-svelte 에 넘긴다.
+const svelteConfig = (await loadConfig("./", { traverse: false }))?.config
 
 export default tseslint.config(
   { ignores: [".svelte-kit", "build", "dist", "node_modules"] },

@@ -11,9 +11,9 @@ description: __PROJECT_NAME__ 프론트엔드에 기능·페이지·API 호출�
 ## 순서
 
 1. **API 함수** `frontend/src/lib/api/<domain>.ts`
-   - 공용 axios 인스턴스(`$lib/api/client`)를 import해서 사용. baseURL·토큰 주입·401 처리는 인스턴스가 담당.
+   - 공용 axios 인스턴스(`#lib/api/client.js`)를 import해서 사용. baseURL·토큰 주입·401 처리는 인스턴스가 담당.
    ```ts
-   import { api } from "$lib/api/client"
+   import { api } from "#lib/api/client.js"
    export const listEvents = () => api.get("/events").then(r => r.data)
    export const createEvent = (data: EventCreate) => api.post("/events", data).then(r => r.data)
    ```
@@ -21,7 +21,7 @@ description: __PROJECT_NAME__ 프론트엔드에 기능·페이지·API 호출�
 2. **서버 상태 함수** `frontend/src/lib/queries/<domain>.ts` — svelte-query **v6**
    ```ts
    import { createQuery, createMutation, useQueryClient } from "@tanstack/svelte-query"
-   import { listEvents, createEvent } from "$lib/api/events"
+   import { listEvents, createEvent } from "#lib/api/events.js"
 
    export function createEventsQuery() {
      return createQuery(() => ({ queryKey: ["events"], queryFn: listEvents }))
@@ -51,7 +51,7 @@ description: __PROJECT_NAME__ 프론트엔드에 기능·페이지·API 호출�
      ⛔ 레거시 `export let` / `<slot/>` / `$:` 금지.
    ```svelte
    <script lang="ts">
-     import { createEventsQuery } from "$lib/queries/events"
+     import { createEventsQuery } from "#lib/queries/events.js"
      let { title }: { title: string } = $props()
      const events = createEventsQuery()   // ← <script> 최상단에서만
      let keyword = $state("")
@@ -69,13 +69,14 @@ description: __PROJECT_NAME__ 프론트엔드에 기능·페이지·API 호출�
    - 인증 필요한 화면은 `src/routes/(protected)/` 하위에 만든다 — 그룹 `+layout.ts` 가드가 자동 적용된다(미인증 시 `/login` 리다이렉트, §14).
    - `(protected)` 같은 **라우트 그룹은 괄호 이름이 URL 에 나타나지 않는다**(`(protected)/my/+page.svelte` → `/my`).
    - 공통 레이아웃은 `+layout.svelte` + `{@render children()}`.
-   - ⚠️ **모든 내부 이동은 `$app/paths` 의 `resolve()` 로 감싼다** — `href={resolve("/events")}`, `goto(resolve("/"))`, `redirect(302, resolve("/login"))`.
-     `eslint-plugin-svelte@3` 의 `svelte/no-navigation-without-resolve` 가 recommended 기본 포함이라, 문자열 경로를 그대로 쓰면 `pnpm lint` 가 깨진다.
-     라우트를 새로 추가하면 `svelte-kit sync` 후 `resolve()` 가 그 경로를 타입으로 인식한다(그룹 이름은 제외한 실제 URL 을 쓴다).
+   - ⚠️ **모든 내부 이동은 `$app/paths` 의 `resolve()` 로 감싼다** — `href={resolve("events")}`, `goto(resolve(""))`, `redirect(302, resolve("login"))`.
+     ⚠️ **SvelteKit 3: pathname 은 앞의 `/` 없이** 쓴다(루트 = `""`). `"/..."` 로 시작하면 **라우트 ID** 로 해석돼 그룹 이름까지 포함해야 한다(`"/(protected)/my"`).
+     라우트를 새로 추가하면 `svelte-kit sync` 후 `resolve()` 가 그 경로를 타입으로 인식한다 → 오타·잘못된 경로는 `pnpm check`(svelte-check)가 잡는다.
+     (현재 `eslint-plugin-svelte@3.23` 의 `svelte/no-navigation-without-resolve` 는 SvelteKit 1·2 에서만 켜져 **Kit 3 에서는 lint 가 잡지 않는다** — 규칙으로 지킨다.)
 
 ## 인증/토큰 (§14)
 - 토큰은 `localStorage` 키 `__PROJECT_SNAKE___token`(또는 `__PROJECT_SNAKE___access_token`). 충돌 방지용 프로젝트 접두. 접근은 `lib/auth/token.ts` 로만.
-- ⚠️ `token.ts` 의 접근 함수에는 `$app/environment` 의 **`browser` 가드 필수** — 빌드의 prerender 단계는 Node 에서 돌아 `localStorage` 가 없다.
+- ⚠️ `token.ts` 의 접근 함수에는 `$app/env` 의 **`browser` 가드 필수** — 빌드의 prerender 단계는 Node 에서 돌아 `localStorage` 가 없다.
 - SSO: 로그인 페이지에서 `window.location.href = \`${import.meta.env.VITE_BACKEND_URL}/api/v1/auth/login\``.
 - 401은 `lib/api/client.ts` interceptor가 일괄 처리(토큰 제거 + `/login`).
 

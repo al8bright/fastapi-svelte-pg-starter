@@ -13,7 +13,7 @@
 
 | # | 고정 규칙 (MUST) | § |
 |---|------------------|---|
-| 1 | **표준 스택 고정**: 백엔드 FastAPI 0.115 + SQLAlchemy 2.0 + Alembic, 프론트 SvelteKit(SPA) + Svelte 5 + Vite + TS, DB는 **PostgreSQL** | §2 |
+| 1 | **표준 스택 고정**: 백엔드 FastAPI + SQLAlchemy 2.1 + Alembic, 프론트 SvelteKit(SPA) + Svelte 5 + Vite + TS, DB는 **PostgreSQL** | §2 |
 | 2 | **DB는 항상 Alembic으로만 관리** — 모든 스키마 생성·변경은 마이그레이션. ⛔ dev/운영 런타임 `create_all`·자동 DDL·수동 `ALTER` 금지(테스트 in-memory만 예외) | §11 |
 | 3 | **설정은 OS 무관하게 `.env`로 주입** — 동일 `.env`가 Windows/mac/Linux에서 동작. ⛔ 개발 중 `$env:`/`export`/`set` 셸 환경변수 의존 금지. ⛔ `.env` 커밋 금지(`.env.example`만) | §5, §17 |
 | 4 | **시각은 KST 단일 기준** — `now()`는 naive `datetime.now()`, PostgreSQL `connect_args`에 `timezone=Asia/Seoul`, 런타임 `TZ=Asia/Seoul`. ⛔ UTC 변환/`ZoneInfo` 신규 도입 금지 | §10, §7 |
@@ -64,8 +64,8 @@
 
 ### 백엔드
 - **언어/런타임**: Python 3.10+ (`X | None` 문법, `Mapped[]` 타입 힌트 사용)
-- **프레임워크**: FastAPI 0.115.x + Uvicorn(`[standard]`)
-- **ORM/마이그레이션**: SQLAlchemy 2.0 (`Mapped`/`mapped_column`) + Alembic
+- **프레임워크**: FastAPI + Uvicorn(`[standard]`) (정확한 버전은 `requirements.txt` / [stack-versions] 스킬)
+- **ORM/마이그레이션**: SQLAlchemy 2.1 (`Mapped`/`mapped_column`) + Alembic
 - **DB 드라이버**: PostgreSQL + `psycopg2-binary`
 - **설정**: `pydantic-settings` (BaseSettings)
 - **검증/직렬화**: Pydantic 2.x
@@ -75,12 +75,13 @@
 - **버전 고정**: `requirements.txt`에 **`==` 정확한 버전 핀** (재현성 우선)
 
 ### 프론트엔드
-- **빌드/런타임**: SvelteKit 2.70 (**SPA 모드**) + Svelte 5.56 + Vite 8.2 (Rolldown) + TypeScript 6.0
-  - SPA 고정: `@sveltejs/adapter-static({ fallback: 'index.html' })` + 루트 `+layout.ts`의 `export const ssr = false`.
+- **빌드/런타임**: SvelteKit 3.0 (**SPA 모드**) + Svelte 5.57 + Vite 8.3 (Rolldown) + TypeScript 6.0
+  - SPA 고정: `vite.config.ts` 의 `sveltekit({ adapter: adapter({ fallback: 'index.html' }) })` + 루트 `+layout.ts`의 `export const ssr = false`.
+    (SvelteKit 3 부터 `svelte.config.js` 는 없다 — Kit 설정은 `sveltekit(...)` 플러그인 옵션으로 넘긴다.)
     백엔드가 별도 FastAPI 서버이고 JWT를 `localStorage`에 두므로 **SSR을 쓰지 않는다.**
 - **라우팅**: **SvelteKit 파일 기반 라우팅**(`src/routes/`). 라우트 그룹 `(protected)`로 인증 가드(§14)
 - **HTTP**: `axios` (인스턴스 + interceptor)
-- **서버 상태**: `@tanstack/svelte-query` 6.1 (캐싱/재요청/무효화)
+- **서버 상태**: `@tanstack/svelte-query` 6.3 (캐싱/재요청/무효화)
 - **클라이언트 상태**: **Svelte 5 runes(`$state`)** — 토큰·세션 등 경량 전역 상태는 `.svelte.ts` 모듈에 둔다. **별도 상태 라이브러리를 쓰지 않는다.**
 - **스타일**: Tailwind CSS v4 (CSS-first `@theme`)
 - **패키지 매니저**: **pnpm** (npm 금지)
@@ -107,8 +108,7 @@
 ├── frontend/
 │   ├── src/
 │   ├── package.json
-│   ├── svelte.config.js
-│   └── vite.config.ts
+│   └── vite.config.ts           # sveltekit({ adapter, ... }) — SvelteKit 3 은 svelte.config.js 없음
 ├── docs/                        # 프로젝트 고유 문서 (PRD·유저 플로우·기획서·<연동>-가이드 등)
 │   └── README.md
 ├── AGENTS.md                    # AI 에이전트 공통 지침 (CLAUDE.md 가 @import)
@@ -330,7 +330,7 @@ class Base(DeclarativeBase):
 
 ## 8. 모델 · 스키마 · 서비스 규칙
 
-### 모델 (`models/`) — SQLAlchemy 2.0 `Mapped`
+### 모델 (`models/`) — SQLAlchemy 2.x `Mapped`
 ```python
 from datetime import datetime
 from sqlalchemy import DateTime, Integer, String
@@ -430,9 +430,8 @@ def _clear_settings_cache():
 frontend/
 ├── .env.example
 ├── package.json
-├── pnpm-workspace.yaml          # onlyBuiltDependencies (pnpm 10+ 빌드 스크립트 허용)
-├── svelte.config.js             # adapter-static({ fallback: 'index.html' }) — SPA fallback
-├── vite.config.ts               # @tailwindcss/vite + sveltekit(), /api dev proxy
+├── pnpm-workspace.yaml          # allowBuilds (pnpm 11 빌드 스크립트 허용)
+├── vite.config.ts               # @tailwindcss/vite + sveltekit({ adapter: adapter-static fallback }), /api dev proxy
 ├── tsconfig.json
 ├── eslint.config.js
 ├── .gitignore                   # .svelte-kit/, build/, node_modules/, .env 등
@@ -459,7 +458,7 @@ frontend/
         ├── login/
         │   └── +page.svelte     # /login
         └── (protected)/         # 라우트 그룹 — URL 에 영향 없음, 인증 가드 담당
-            ├── +layout.ts       # 토큰 없으면 redirect(302, resolve('/login'))
+            ├── +layout.ts       # 토큰 없으면 redirect(302, resolve('login'))
             ├── +layout.svelte   # 보호 영역 공통 레이아웃 ({@render children()})
             ├── +page.svelte     # /          메인
             ├── landing/
@@ -471,7 +470,7 @@ frontend/
 `lib/api/client.ts` (axios 표준):
 ```ts
 import axios from "axios"
-import { getToken, clearToken } from "$lib/auth/token"
+import { getToken, clearToken } from "#lib/auth/token.js"
 
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL
@@ -499,8 +498,8 @@ api.interceptors.response.use(
 
 `lib/stores/auth.svelte.ts` (Svelte 5 runes — 전역 클라이언트 상태):
 ```ts
-import type { User } from "$lib/api/auth"
-import { clearToken, getToken, setToken } from "$lib/auth/token"
+import type { User } from "#lib/api/auth.js"
+import { clearToken, getToken, setToken } from "#lib/auth/token.js"
 
 // 클라이언트 전역 상태 (ARCHITECTURE.md §13).
 // runes 를 쓰는 TS 모듈이므로 파일 확장자는 반드시 `.svelte.ts`.
@@ -535,7 +534,7 @@ export const authStore = new AuthStore()
 `lib/queries/health.ts` (svelte-query):
 ```ts
 import { createQuery } from "@tanstack/svelte-query"
-import { getDbHealth, getHealth } from "$lib/api/health"
+import { getDbHealth, getHealth } from "#lib/api/health.js"
 
 // svelte-query 쿼리 (ARCHITECTURE.md §13).
 export function createHealth() {
@@ -550,8 +549,8 @@ export function createDbHealth() {
 `lib/queries/auth.ts` (뮤테이션):
 ```ts
 import { createMutation } from "@tanstack/svelte-query"
-import { getMe, login } from "$lib/api/auth"
-import { authStore } from "$lib/stores/auth.svelte"
+import { getMe, login } from "#lib/api/auth.js"
+import { authStore } from "#lib/stores/auth.svelte.js"
 
 export function createLogin() {
   return createMutation(() => ({
@@ -598,13 +597,14 @@ export function createLogin() {
 
 - **SSO**: `routes/login/+page.svelte`에서 `window.location.href = ${VITE_BACKEND_URL}/api/v1/auth/login`.
 - **콜백**: `routes/auth/callback/+page.svelte`가 토큰 수신 → `authStore.setSession(token)` → `/api/v1/auth/me`로 사용자 로드 → 홈 리다이렉트.
-- **보호 라우트**: 라우트 그룹 `(protected)/`의 `+layout.ts` 가드가 담당한다(미인증 시 `redirect(302, resolve('/login'))`).
+- **보호 라우트**: 라우트 그룹 `(protected)/`의 `+layout.ts` 가드가 담당한다(미인증 시 `redirect(302, resolve('login'))`).
   그룹 이름은 괄호라서 **URL 에 나타나지 않는다** — 보호 대상 페이지를 이 디렉토리 아래로 옮기기만 하면 된다.
 - 토큰은 `localStorage`(키: `<project>_token`). 401은 interceptor가 일괄 처리(§13).
-- ⚠️ `lib/auth/token.ts` 의 `getToken`/`setToken`/`clearToken` 에는 **`$app/environment` 의 `browser` 가드가 필수**다.
+- ⚠️ `lib/auth/token.ts` 의 `getToken`/`setToken`/`clearToken` 에는 **`$app/env` 의 `browser` 가드가 필수**다.
   `ssr = false` 라도 빌드의 **prerender 단계는 Node 에서 돌아** `localStorage` 가 없다(가드가 없으면 빌드가 깨진다).
-- ⚠️ 내부 이동 경로는 `$app/paths` 의 **`resolve()`** 로 감싼다(`href={resolve('/landing')}`, `goto(resolve('/'))`).
-  `eslint-plugin-svelte@3` 의 `svelte/no-navigation-without-resolve` 가 recommended 기본 포함이라 안 감싸면 lint 에러다.
+- ⚠️ 내부 이동 경로는 `$app/paths` 의 **`resolve()`** 로 감싼다(`href={resolve('landing')}`, `goto(resolve(''))`).
+  SvelteKit 3 의 pathname 은 **앞의 `/` 없이** 쓰고(루트 = `''`), 경로는 `svelte-check` 가 타입으로 검사한다.
+  (`eslint-plugin-svelte@3.23` 의 `svelte/no-navigation-without-resolve` 는 Kit 3 에서 비활성 — lint 가 아니라 규칙으로 지킨다.)
 
 ```
 src/routes/
@@ -613,7 +613,7 @@ src/routes/
 ├── login/+page.svelte       # /login
 ├── auth/callback/+page.svelte   # /auth/callback (SSO 콜백 — SSO 도입 시 추가, 스캐폴드에는 없음)
 └── (protected)/             # ★ 인증 가드 그룹 (URL 에 영향 없음)
-    ├── +layout.ts           # 토큰 없으면 redirect(302, resolve('/login'))
+    ├── +layout.ts           # 토큰 없으면 redirect(302, resolve('login'))
     ├── +layout.svelte       # 공통 레이아웃 ({@render children()})
     ├── +page.svelte         # /
     ├── landing/+page.svelte # /landing
@@ -623,13 +623,13 @@ src/routes/
 ```ts
 // src/routes/(protected)/+layout.ts
 import { redirect } from "@sveltejs/kit"
-import { browser } from "$app/environment"
+import { browser } from "$app/env"
 import { resolve } from "$app/paths"
-import { getToken } from "$lib/auth/token"
+import { getToken } from "#lib/auth/token.js"
 
 // prerender 단계(Node)에서는 browser 가 false 라 리다이렉트하지 않고 빈 셸만 만든다.
 export const load = () => {
-  if (browser && !getToken()) redirect(302, resolve("/login"))
+  if (browser && !getToken()) redirect(302, resolve("login"))
 }
 ```
 
@@ -667,7 +667,7 @@ export const load = () => {
 | 쿼리 함수 | `lib/queries/<domain>.ts` 의 `createXxx()` |
 | runes 를 쓰는 TS 모듈 | 확장자 `.svelte.ts` 필수 (예: `lib/stores/auth.svelte.ts`) — 컴파일러가 `$state` 를 처리하려면 필요 |
 | TS 타입/인터페이스 | `PascalCase`, 유니온은 리터럴(`'active' | 'closed'`) |
-| 경로 별칭 | `$lib` → `src/lib` (SvelteKit 내장, 별도 설정 불필요) |
+| 경로 별칭 | `#lib/*` → `src/lib/*` (`package.json` `"imports"`, Node subpath imports). import 시 확장자 `.js` 필수 — `#lib/api/client.js` |
 | API 경로 | `/api/v1/<resource>` (리소스 복수형) |
 
 ---
@@ -730,15 +730,13 @@ PR 리뷰 단계가 없으므로 **커밋·push 전 검증을 건너뛰면 깨�
 
 push 전에 반드시 통과시킨다:
 
-  ## 테스트
-  - 추가/수정한 테스트와 결과 (pytest, 프론트 등)
+```powershell
+cd backend;  .\.venv\Scripts\python -m pytest -q;  .\.venv\Scripts\python -m ruff check .
+cd ..\frontend;  pnpm lint;  pnpm check;  pnpm build
+```
 
-  ## 체크리스트
-  - [ ] 모든 테스트 통과 + 린트 경고 0
-  - [ ] Structural/Behavioral 를 섞지 않음
-  - [ ] DB 변경 시 Alembic 마이그레이션 포함 (§11)
-  - [ ] 설정 변경 시 `.env.example` 갱신 (§5, §17)
-  ```
+- 실패했거나 확인하지 않았으면 push 하지 않는다.
+- push 후 CI가 실패하면 **되돌리거나 즉시 고치는 커밋을 올린다.** 실패 상태를 방치하지 않는다.
 
 ### 커밋 단위
 - **하나의 커밋은 Structural·Behavioral 중 하나만** 담는다(§18 Tidy First). 브랜치가 없어도 이 분리는 유지한다.
@@ -802,7 +800,7 @@ gh pr merge --squash --delete-branch
 - [ ] Alembic 초기화 + 초기 마이그레이션 (§11) — **DB는 항상 Alembic으로만 관리, `create_all`은 테스트 전용 (MUST §11)**
 - [ ] `pytest` + SQLite in-memory + `conftest.py` 픽스처 (§12)
 - [ ] 프론트 `src/` 골격(§13): axios `lib/api/client.ts`, `lib/stores/auth.svelte.ts`, `+layout.svelte`의 QueryClientProvider
-- [ ] SPA 고정: `svelte.config.js` adapter-static + 루트 `+layout.ts`의 `ssr = false` (§2, §13)
+- [ ] SPA 고정: `vite.config.ts` 의 `sveltekit({ adapter: adapter-static })` + 루트 `+layout.ts`의 `ssr = false` (§2, §13)
 - [ ] `(protected)/+layout.ts` 가드 + SSO 로그인/콜백 흐름 (§14)
 - [ ] Tailwind v4 `@theme`, pnpm, ESLint (§15, §2)
 - [ ] `.github/workflows/ci.yml` 동작 확인 — push 이후 도는 **사후 안전망**이다. push 전 로컬 검증이 유일한 게이트 (§20)

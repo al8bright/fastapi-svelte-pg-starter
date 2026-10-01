@@ -1,6 +1,6 @@
 import { createMutation, createQuery } from "@tanstack/svelte-query"
-import { getMe, login } from "$lib/api/auth"
-import { authStore } from "$lib/stores/auth.svelte"
+import { getMe, login } from "#lib/api/auth.js"
+import { authStore } from "#lib/stores/auth.svelte.js"
 
 // 인증 쿼리 (ARCHITECTURE.md §13, §14).
 // svelte-query v6 은 옵션을 "함수(accessor)"로 받는다 — 함수 본문이 runes 처럼 반응형으로 재평가된다.

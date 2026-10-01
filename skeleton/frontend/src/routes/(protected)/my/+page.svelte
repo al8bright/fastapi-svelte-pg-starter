@@ -1,15 +1,15 @@
 <script lang="ts">
   import { goto } from "$app/navigation"
   import { resolve } from "$app/paths"
-  import { createMe } from "$lib/queries/auth"
-  import { authStore } from "$lib/stores/auth.svelte"
+  import { createMe } from "#lib/queries/auth.js"
+  import { authStore } from "#lib/stores/auth.svelte.js"
 
   // My 화면 (ARCHITECTURE.md §14). 로그인 사용자 정보 + 로그아웃.
   const me = createMe()
 
   const onLogout = () => {
     authStore.logout()
-    goto(resolve("/login"), { replaceState: true })
+    goto(resolve("login"), { replaceState: true })
   }
 </script>
 
@@ -42,7 +42,7 @@
       로그아웃
     </button>
     <a
-      href={resolve("/")}
+      href={resolve("")}
       class="mt-3 block text-center text-sm text-on-surface-variant hover:text-on-surface"
     >
       ← 메인으로

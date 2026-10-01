@@ -1,5 +1,5 @@
 import axios from "axios"
-import { clearToken, getToken } from "$lib/auth/token"
+import { clearToken, getToken } from "#lib/auth/token.js"
 
 // axios 인스턴스 (ARCHITECTURE.md §13). baseURL 미설정 시 vite dev proxy(/api/v1) 사용.
 export const api = axios.create({
