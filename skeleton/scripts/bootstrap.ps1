@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 <#
 .SYNOPSIS
   신규 개발 환경 부트스트랩 (Windows) — 최소 버전 검사 후 부족할 때만 설치.
