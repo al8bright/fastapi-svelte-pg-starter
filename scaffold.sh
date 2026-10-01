@@ -295,14 +295,42 @@ if [ $SKIP_DB -eq 0 ]; then
   fi
 fi
 DATABASE_URL="postgresql+psycopg2://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
+# SECRET_KEY 는 JWT 서명키이므로 반드시 암호학적 난수여야 한다.
+# ⛔ 타임스탬프 폴백(change-me-<epoch>)은 생성 시각만 추측하면 서명키가 복원되어 토큰 위조로
+#    직결된다 — 난수를 만들 수 없으면 약한 키로 진행하지 말고 즉시 중단한다.
 if command -v openssl >/dev/null 2>&1; then SECRET=$(openssl rand -hex 24)
 elif command -v python3 >/dev/null 2>&1; then SECRET=$(python3 -c 'import secrets;print(secrets.token_hex(24))')
-else SECRET="change-me-$(date +%s)"; fi
+else
+  echo "SECRET_KEY 를 생성할 수 없습니다: openssl 또는 python3 가 필요합니다." >&2
+  echo "  둘 중 하나를 설치한 뒤 다시 실행하세요 (JWT 서명키는 암호학적 난수여야 합니다)." >&2
+  exit 1
+fi
+
+# 초기 관리자 비밀번호도 무작위로 생성한다.
+# ⛔ 하드코딩된 기본값(admin123)을 쓰면 이 템플릿으로 만든 모든 프로젝트가 같은 자격증명을 갖는다.
+#    타임스탬프 폴백(admin-<epoch>)도 같은 이유로 두지 않는다 — 위 SECRET 생성에서 openssl/python3
+#    부재 시 이미 중단했으므로 여기서는 둘 중 하나가 반드시 존재한다.
+if command -v openssl >/dev/null 2>&1; then SEED_ADMIN_PW=$(openssl rand -base64 12 | tr -d '/+=' | cut -c1-16)
+else SEED_ADMIN_PW=$(python3 -c 'import secrets;print(secrets.token_urlsafe(12))'); fi
 
 # ---------- 2. 복사 ----------
 step "골격 복사 → $TARGET"
 mkdir -p "$TARGET"
-cp -R "$SKELETON_DIR/." "$TARGET/"
+# ⛔ cp -R 로 통째 복사하지 않는다 — 템플릿 저장소에서 개발/검증을 하면 skeleton/ 안에
+#    node_modules(수백 MB)·.venv·.svelte-kit·build 같은 gitignore 산출물이 남는데, 그대로 복사되면
+#    생성 프로젝트가 수백 MB 로 부풀고 아래 토큰 치환이 빌드 산출물을 붙잡고 사실상 멈춘다.
+#    복사된 node_modules 는 생성 프로젝트의 pnpm install 을 비대화형에서
+#    ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY 로 중단시키기도 한다.
+#    실제 .env 가 복사되면 템플릿의 SECRET_KEY 가 새 프로젝트로 새는 보안 문제도 된다.
+#    tar 는 GNU/bsdtar 모두 --exclude 를 지원하므로 산출물·비밀을 원천 제외하고 복사한다.
+#    ('build' 는 SvelteKit adapter-static 출력 디렉터리 — 골격에 같은 이름의 소스 디렉터리는 없다.)
+_COPY_EXCLUDES="node_modules .venv .svelte-kit build .ruff_cache .pytest_cache __pycache__ .DS_Store .env"
+_tar_ex=""
+for _e in $_COPY_EXCLUDES; do _tar_ex="$_tar_ex --exclude $_e"; done
+# shellcheck disable=SC2086  # $_tar_ex 는 공백으로 나뉘어야 하는 옵션 나열이다
+if ! (cd "$SKELETON_DIR" && tar cf - $_tar_ex .) | (cd "$TARGET" && tar xf -); then
+  warn "골격 복사 실패 (권한/디스크 확인) — 중단합니다"; exit 1
+fi
 # bootstrap 이 실제로 설치·고정한 런타임 버전을 생성 프로젝트에 반영 (골격의 값은 덮어쓴다)
 if [ -n "$_PIN_DIR" ]; then
   for _pin in .python-version .nvmrc; do
@@ -322,24 +350,51 @@ replace_tokens() {
   content=${content//__THEME_CSS__/$THEME}
   printf '%s' "$content" > "$f"
 }
+# 복사 단계가 산출물을 제외하지만, 기존 디렉토리 위에 덮어쓴 재실행(이미 install/build 된
+# 프로젝트)에서는 node_modules·.svelte-kit·build 등이 남아 있다 — 여기서도 걸러야 한다(방어 이중화).
+# -mindepth 1: 대상 경로 자체가 같은 이름(예: .../build)이어도 통째로 prune 되지 않게 한다.
 while IFS= read -r -d '' f; do replace_tokens "$f"; done < <(
-  find "$TARGET" -type f \( -name '*.ts' -o -name '*.svelte' -o -name '*.py' -o -name '*.css' \
+  find "$TARGET" -mindepth 1 \( -name node_modules -o -name .venv -o -name .svelte-kit -o -name build \
+    -o -name .ruff_cache -o -name .pytest_cache -o -name __pycache__ -o -name .git \) -prune -o -type f \( -name '*.ts' -o -name '*.svelte' -o -name '*.py' -o -name '*.css' \
     -o -name '*.html' -o -name '*.json' -o -name '*.md' -o -name '*.ini' -o -name '*.mako' \
     -o -name '*.js' -o -name '*.example' -o -name '*.txt' \) -print0 )
 ok "치환 완료"
 
 # ---------- 4. .env ----------
 step ".env 생성 (OS 무관 주입 — ARCHITECTURE.md §5)"
-cat > "$TARGET/backend/.env" <<EOF
+# ⛔ 기존 .env 를 덮어쓰면 SECRET_KEY 가 재발급되어 발급된 JWT 가 전부 무효가 되고,
+#    손으로 채운 DB 비밀번호도 사라진다. 백업을 남긴 뒤 새로 쓴다.
+if [ -f "$TARGET/backend/.env" ]; then
+  _env_bak="$TARGET/backend/.env.bak.$(date +%Y%m%d%H%M%S)"
+  cp "$TARGET/backend/.env" "$_env_bak" && warn "기존 backend/.env 를 백업했습니다: $(basename "$_env_bak")"
+fi
+cat > "$TARGET/backend/.env" <<EOF || { warn "backend/.env 생성 실패 — 중단합니다"; exit 1; }
 DATABASE_URL=$DATABASE_URL
 SECRET_KEY=$SECRET
-ACCESS_TOKEN_EXPIRE_MINUTES=30
+ACCESS_TOKEN_EXPIRE_MINUTES=15
+# 인증 세션·로그인 스로틀 (ARCHITECTURE.md §9) — 코드 기본값과 같지만, 운영자가 .env 만 보고도
+# 조절 지점을 알 수 있도록 명시한다.
+REFRESH_TOKEN_EXPIRE_DAYS=14
+LOGIN_MAX_FAILURES=5
+LOGIN_LOCKOUT_MINUTES=15
+# refresh 토큰 전달 방식 — 이 템플릿(SvelteKit SPA)은 백엔드가 httpOnly 쿠키로 직접 심는 cookie 다.
+# 브라우저 JS 는 refresh 토큰을 보지 못하고, access 토큰은 메모리에만 둔다 (ARCHITECTURE.md §9·§14).
+REFRESH_TOKEN_TRANSPORT=cookie
+# 로컬 HTTP 개발용. ⛔ HTTPS 운영에서는 true — APP_ENV=production 에서 false 면 기동을 거부한다.
+COOKIE_SECURE=false
 CORS_ORIGINS=http://localhost:5173
 FRONTEND_URL=http://localhost:5173
 BACKEND_PUBLIC_URL=http://localhost:8000
 TZ=Asia/Seoul
+APP_ENV=development
+# 초기 관리자 시드 — 코드 기본값은 꺼져 있고(backend/app/config.py) 개발 편의를 위해 여기서만 켠다.
+# ⛔ 배포 전 SEED_DEFAULT_ADMIN=false 로 끄고 APP_ENV=production 으로 바꾼다.
+SEED_DEFAULT_ADMIN=true
+DEFAULT_ADMIN_PASSWORD=$SEED_ADMIN_PW
 EOF
-printf 'VITE_API_BASE_URL=\nVITE_BACKEND_URL=http://localhost:8000\n' > "$TARGET/frontend/.env"
+chmod 600 "$TARGET/backend/.env" 2>/dev/null || warn "backend/.env 권한 설정 실패 — 수동으로 chmod 600 하세요"
+printf 'VITE_API_BASE_URL=\nVITE_BACKEND_URL=http://localhost:8000\n' > "$TARGET/frontend/.env" \
+  || { warn "frontend/.env 생성 실패 — 중단합니다"; exit 1; }
 ok "backend/.env, frontend/.env 생성 (DATABASE_URL, SECRET_KEY 주입)"
 
 BACKEND="$TARGET/backend"
@@ -401,6 +456,11 @@ cat <<EOF
   cd "$FRONTEND"
   pnpm dev              # 개발 서버
   pnpm check            # 타입 검사 (svelte-kit sync + svelte-check)
+
+[로그인]  초기 관리자 계정 (backend/.env 의 DEFAULT_ADMIN_PASSWORD):
+  아이디: admin
+  비밀번호: $SEED_ADMIN_PW
+  ⛔ 배포 전 이 계정의 비밀번호를 바꾸고 SEED_DEFAULT_ADMIN=false, APP_ENV=production 으로 설정하세요.
 
 [확인]    브라우저: http://localhost:5173
           → '백엔드 API'와 '데이터베이스'가 모두 '정상'이면 성공입니다.

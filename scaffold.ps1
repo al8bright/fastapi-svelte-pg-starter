@@ -331,23 +331,30 @@ $_secBytes = [byte[]]::new(24)
 $_rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
 try { $_rng.GetBytes($_secBytes) } finally { $_rng.Dispose() }
 $secret = -join ($_secBytes | ForEach-Object { $_.ToString('x2') })
+# 초기 관리자 비밀번호도 무작위로 생성한다.
+# ⛔ 하드코딩된 기본값(admin123)을 쓰면 이 템플릿으로 만든 모든 프로젝트가 같은 자격증명을 갖는다.
+$_pwBytes = [byte[]]::new(12)
+$_rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+try { $_rng.GetBytes($_pwBytes) } finally { $_rng.Dispose() }
+$seedAdminPw = [Convert]::ToBase64String($_pwBytes) -replace '[/+=]', ''
 
 # ---------- 2. 골격 복사 ----------
 Write-Step "골격 복사 → $Target"
 New-Item -ItemType Directory -Force -Path $Target | Out-Null
-Copy-Item -Path (Join-Path $SkeletonDir '*') -Destination $Target -Recurse -Force
-# 안전장치: 닷파일 누락 시 보강
-foreach ($dot in '.gitignore', '.gitattributes') {
-  $src = Join-Path $SkeletonDir $dot
-  $dst = Join-Path $Target $dot
-  if ((Test-Path $src) -and (-not (Test-Path $dst))) { Copy-Item $src $dst -Force }
-}
-# 안전장치: .claude (스킬/지침 디렉토리) 누락 시 재귀 보강
-$claudeSrc = Join-Path $SkeletonDir '.claude'
-$claudeDst = Join-Path $Target '.claude'
-if ((Test-Path $claudeSrc) -and (-not (Test-Path $claudeDst))) {
-  Copy-Item $claudeSrc $claudeDst -Recurse -Force
-}
+# 닷파일(.gitignore·.gitattributes·.python-version·.nvmrc·.github·.claude 등) 포함 전체 복사.
+# robocopy 는 숨김 속성 항목도 복사하므로 과거의 닷파일·.claude 누락 보강 단계는 필요 없다.
+# ⛔ Copy-Item 통째 복사는 쓰지 않는다 — 템플릿 저장소에서 개발/검증을 하면 skeleton\ 안에
+#    node_modules(수백 MB)·.venv·.svelte-kit·build 같은 gitignore 산출물이 남는데, 그대로 복사되면
+#    생성 프로젝트가 수백 MB 로 부풀고 토큰 치환이 빌드 산출물을 붙잡는다. 복사된 node_modules 는
+#    다른 경로에서 만든 것이라 생성 프로젝트의 pnpm install 이 비대화형에서
+#    ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY 로 중단되기도 한다. 실제 .env 가 복사되면
+#    템플릿의 SECRET_KEY 가 새는 보안 문제도 된다 (scaffold.sh 의 tar --exclude 와 동일 결과).
+#    robocopy 는 Windows 기본 탑재이고 /XD·/XF 로 디렉터리·파일을 원천 제외한다.
+#    ('build' 는 SvelteKit adapter-static 출력 디렉터리 — 골격에 같은 이름의 소스 디렉터리는 없다.)
+$_xd = 'node_modules', '.venv', '.svelte-kit', 'build', '.ruff_cache', '.pytest_cache', '__pycache__'
+robocopy $SkeletonDir $Target /E /XD $_xd /XF '.DS_Store' '.env' /NFL /NDL /NJH /NJS /NP | Out-Null
+# robocopy 종료 코드: 0~7 = 성공(복사 결과 비트마스크), 8 이상 = 실패
+if ($LASTEXITCODE -ge 8) { Write-Warn2 "골격 복사 실패 (robocopy 코드 $LASTEXITCODE) — 중단합니다"; exit 1 }
 # bootstrap 이 실제로 설치·고정한 런타임 버전을 생성 프로젝트에 반영 (골격의 값은 덮어쓴다)
 if ($_PinDir) {
   foreach ($pin in '.python-version', '.nvmrc') {
@@ -362,7 +369,12 @@ Write-Ok "복사 완료"
 Write-Step "토큰 치환"
 $inc = '*.ts','*.svelte','*.py','*.css','*.html','*.json','*.md','*.ini','*.mako','*.js','*.example','*.txt'
 # -Force: 숨김 속성/닷 디렉토리(.claude, .github) 하위 파일도 치환 대상에 포함시킨다.
-$files = Get-ChildItem -Path $Target -Recurse -File -Force -Include $inc
+# 복사 단계가 산출물을 제외하지만, 기존 디렉토리 위에 덮어쓴 재실행(이미 install/build 된
+# 프로젝트)에서는 node_modules·.svelte-kit·build 등이 남아 있다 — 여기서도 걸러야 빌드 산출물을
+# 문자열 치환이 붙잡지 않는다(방어 이중화, scaffold.sh 의 find -prune 과 동일).
+# 대상 경로 자체(예: C:\build\MyApp)에 같은 이름이 있어도 오탐하지 않도록 $Target 기준 상대 경로로 비교한다.
+$files = Get-ChildItem -Path $Target -Recurse -File -Force -Include $inc |
+  Where-Object { ('\' + $_.FullName.Substring($Target.Length)) -notmatch '[\\/](node_modules|\.venv|\.svelte-kit|build|\.ruff_cache|\.pytest_cache|__pycache__|\.git)[\\/]' }
 foreach ($f in $files) {
   $t = [System.IO.File]::ReadAllText($f.FullName)
   $o = $t
@@ -376,13 +388,48 @@ Write-Step ".env 생성 (OS 무관 주입 — ARCHITECTURE.md §5)"
 $backendEnv = @"
 DATABASE_URL=$databaseUrl
 SECRET_KEY=$secret
-ACCESS_TOKEN_EXPIRE_MINUTES=30
+ACCESS_TOKEN_EXPIRE_MINUTES=15
+# 인증 세션·로그인 스로틀 (ARCHITECTURE.md §9) — 코드 기본값과 같지만, 운영자가 .env 만 보고도
+# 조절 지점을 알 수 있도록 명시한다.
+REFRESH_TOKEN_EXPIRE_DAYS=14
+LOGIN_MAX_FAILURES=5
+LOGIN_LOCKOUT_MINUTES=15
+# refresh 토큰 전달 방식 — 이 템플릿(SvelteKit SPA)은 백엔드가 httpOnly 쿠키로 직접 심는 cookie 다.
+# 브라우저 JS 는 refresh 토큰을 보지 못하고, access 토큰은 메모리에만 둔다 (ARCHITECTURE.md §9·§14).
+REFRESH_TOKEN_TRANSPORT=cookie
+# 로컬 HTTP 개발용. ⛔ HTTPS 운영에서는 true — APP_ENV=production 에서 false 면 기동을 거부한다.
+COOKIE_SECURE=false
 CORS_ORIGINS=http://localhost:5173
 FRONTEND_URL=http://localhost:5173
 BACKEND_PUBLIC_URL=http://localhost:8000
 TZ=Asia/Seoul
+APP_ENV=development
+# 초기 관리자 시드 — 코드 기본값은 꺼져 있고(backend/app/config.py) 개발 편의를 위해 여기서만 켠다.
+# ⛔ 배포 전 SEED_DEFAULT_ADMIN=false 로 끄고 APP_ENV=production 으로 바꾼다.
+SEED_DEFAULT_ADMIN=true
+DEFAULT_ADMIN_PASSWORD=$seedAdminPw
 "@
-[System.IO.File]::WriteAllText((Join-Path $Target 'backend\.env'), $backendEnv, $Enc)
+# ⛔ .env 는 DB 비밀번호와 JWT 서명키를 담는다. 상속 ACL 을 끊고 현재 사용자에게만 허용한다
+#    (scaffold.sh 의 chmod 600 대응).
+$_backendEnvPath = Join-Path $Target 'backend\.env'
+# ⛔ 기존 .env 를 덮어쓰면 SECRET_KEY 가 재발급되어 발급된 JWT 가 전부 무효가 된다. 백업을 남긴다.
+if (Test-Path $_backendEnvPath) {
+  $_envBak = "$_backendEnvPath.bak." + (Get-Date -Format 'yyyyMMddHHmmss')
+  Copy-Item $_backendEnvPath $_envBak -Force
+  Write-Warn2 "기존 backend\.env 를 백업했습니다: $(Split-Path $_envBak -Leaf)"
+}
+[System.IO.File]::WriteAllText($_backendEnvPath, $backendEnv, $Enc)
+try {
+  $_acl = Get-Acl $_backendEnvPath
+  $_acl.SetAccessRuleProtection($true, $false)
+  # 열거 중 컬렉션을 수정하지 않도록 스냅샷(@())을 뜬 뒤 제거한다
+  @($_acl.Access) | ForEach-Object { [void]$_acl.RemoveAccessRule($_) }
+  [void]$_acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule(
+    [System.Security.Principal.WindowsIdentity]::GetCurrent().Name, 'FullControl', 'Allow')))
+  Set-Acl -Path $_backendEnvPath -AclObject $_acl
+} catch {
+  Write-Warn2 "backend\.env 권한 설정 실패 — 파일 접근 권한을 직접 제한하세요: $($_.Exception.Message)"
+}
 $frontendEnv = "VITE_API_BASE_URL=`nVITE_BACKEND_URL=http://localhost:8000`n"
 [System.IO.File]::WriteAllText((Join-Path $Target 'frontend\.env'), $frontendEnv, $Enc)
 Write-Ok "backend\.env, frontend\.env 생성 (DATABASE_URL, SECRET_KEY 주입)"
@@ -471,6 +518,11 @@ Write-Host @"
   cd "$frontend"
   pnpm dev              # 개발 서버
   pnpm check            # 타입 검사 (svelte-kit sync + svelte-check)
+
+[로그인]  초기 관리자 계정 (backend\.env 의 DEFAULT_ADMIN_PASSWORD):
+  아이디: admin
+  비밀번호: $seedAdminPw
+  ⛔ 배포 전 이 계정의 비밀번호를 바꾸고 SEED_DEFAULT_ADMIN=false, APP_ENV=production 으로 설정하세요.
 
 [확인]    브라우저: http://localhost:5173
           → '백엔드 API'와 '데이터베이스'가 모두 '정상'이면 성공입니다.

@@ -5,6 +5,62 @@
 
 ---
 
+## 2026-10-02 — 백엔드 보안 보강 (네 템플릿 공통)
+
+### Added (추가)
+
+- **보안 응답 헤더** — 모든 응답에 `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `Cross-Origin-Opener-Policy: same-origin`. HSTS(`max-age=31536000`)는 `COOKIE_SECURE=true` 또는 `APP_ENV=production` 일 때만 보낸다.
+- **`/api/v1/auth/*` 캐시 금지** — 성공·401/422/429·쿠키 삭제 응답 모두 `Cache-Control: no-store`.
+- **로그인 잠금 429 의 `Retry-After`** — 남은 잠금 초(올림·최소 1). 미존재 계정도 동일하게 받아 계정 존재가 드러나지 않는다.
+- `tests/test_security.py` 24건.
+
+### Changed (변경)
+
+- CORS `allow_methods`/`allow_headers` 를 `"*"` 에서 명시 목록(`GET·POST·PUT·PATCH·DELETE·OPTIONS` / `Authorization·Content-Type`)으로 좁히고 `Retry-After` 를 expose 한다.
+- CSP 는 `/docs`·`/redoc` 을 깨뜨리므로 백엔드에서 붙이지 않는다(프론트엔드 호스팅 책임). `ARCHITECTURE.md` §9 에 정리했다.
+
+## 2026-10-02 — 공통 백엔드 채택 + 메모리 access 토큰·httpOnly refresh 쿠키 인증 전환
+
+### ⚠️ Breaking (이전에 생성한 프로젝트)
+
+- 백엔드 인증 계약이 바뀌었다. 이전 골격으로 만든 프로젝트에 이 변경을 옮기려면 `backend/` 를 통째로 교체하고 `alembic upgrade head`(`0003_auth_sessions`)를 실행한 뒤,
+  `backend/.env` 에 `APP_ENV`·`REFRESH_TOKEN_EXPIRE_DAYS`·`LOGIN_MAX_FAILURES`·`LOGIN_LOCKOUT_MINUTES`·`REFRESH_TOKEN_TRANSPORT=cookie`·`COOKIE_SECURE`·
+  `SEED_DEFAULT_ADMIN`·`DEFAULT_ADMIN_PASSWORD` 를 추가해야 한다. **관리자 시드는 기본으로 꺼져 있고 기본 비밀번호(`admin123`)도 없다** — 두 키를 넣지 않으면 관리자가 생성되지 않는다.
+- access 토큰에 `sid` 클레임이 추가되고 만료가 30분 → 15분이 됐다. 이전 토큰은 모두 401 이다(재로그인 필요).
+- 프론트의 `lib/auth/token.ts`(`localStorage` 래퍼)가 삭제됐다. `getToken`/`setToken`/`clearToken`·`authStore.logout()` 을 쓰던 코드는
+  `authStore.token`·`authStore.clear()`·`signOut()`(`lib/auth/session.ts`)으로 옮겨야 한다. 브라우저에 남은 `<project>_token` 키는 더 이상 읽지 않는다.
+- `SECRET_KEY` 기본값이 `change-me-in-production-use-32-bytes` 로 바뀌었고, `APP_ENV=production` 에서 기본 키·관리자 시드·`COOKIE_SECURE=false`(cookie 모드)면 기동을 거부한다.
+
+### Changed (변경)
+
+- **백엔드를 공통 백엔드로 교체** (`skeleton/backend/`) — nextjs 저장소의 `skeleton/backend` 와 파일 단위로 동일하다(`.env.example` 만 이 템플릿 값).
+  테이블 `app_meta`·`users`·`auth_sessions`(refresh 세션: 회전, 직전 토큰 60초 유예, 재사용 감지 시 세션 폐기, 로그아웃 폐기)·`login_throttles`(계정별 연속 실패 잠금 → 429).
+  refresh 토큰 전달 방식 `REFRESH_TOKEN_TRANSPORT=cookie|body` 중 이 템플릿은 **cookie** — login/refresh 가 httpOnly 쿠키 `refresh_token`(`Path=/api/v1/auth`, `SameSite=Lax`,
+  `Secure=COOKIE_SECURE`)을 심고 응답 본문의 `refresh_token` 은 `null`, `/auth/refresh` 는 쿠키만 읽으며 실패 시 401 + 쿠키 삭제, `/auth/logout` 은 항상 204 + 쿠키 삭제.
+  테스트 83건(`test_auth_sessions.py`·`test_auth_cookie_transport.py`·`test_config.py` 추가).
+- **프론트 인증 흐름 교체** (`skeleton/frontend/src/`) — access 토큰은 runes 스토어(`lib/stores/auth.svelte.ts`) **메모리에만** 둔다.
+  앱 시작 시 루트·`(protected)` `+layout.ts` load 가 `restoreSession()`(`lib/auth/session.ts`, `POST /auth/refresh`)을 기다린 뒤 인증 여부를 판단해 새로고침 시 로그인 화면 깜빡임이 없다.
+  axios 인스턴스는 `withCredentials: true`, 401 이면(`/auth/login`·`refresh`·`logout` 제외) refresh 를 single-flight 로 1회 호출 후 원 요청을 1회 재시도하고,
+  refresh 실패 시 스토어·svelte-query 캐시(`lib/query-client.ts` 단일 인스턴스)를 비우고 `/login` 으로 보낸다. 로그아웃은 `POST /auth/logout` 후 정리.
+  로그인 화면은 401(자격증명)·429(잠금) 문구를 구분하고, 기본 계정 안내 문구(`admin / admin123`)를 제거했다.
+- **스캐폴드 `.env` 생성 정렬** (`scaffold.ps1`·`scaffold.sh`) — nextjs 스캐폴드와 같은 키를 쓴다: `ACCESS_TOKEN_EXPIRE_MINUTES=15`·`REFRESH_TOKEN_EXPIRE_DAYS`·`LOGIN_*`·
+  `REFRESH_TOKEN_TRANSPORT=cookie`·`COOKIE_SECURE=false`·`APP_ENV=development`·`SEED_DEFAULT_ADMIN=true`·무작위 `DEFAULT_ADMIN_PASSWORD`(CSPRNG). 완료 메시지에 생성된 관리자 비밀번호를 출력한다.
+  재실행 시 기존 `backend/.env` 를 `.env.bak.<시각>` 으로 백업하고, 새 파일은 `chmod 600` / 현재 사용자 단독 ACL 로 제한한다.
+  bash 판은 난수 도구(openssl/python3)가 없으면 타임스탬프 키로 진행하지 않고 중단한다.
+- **문서** — `ARCHITECTURE.md` §4~§9·§12(백엔드 계약은 공통 문서와 같은 문구), §13·§14(프론트 인증 흐름), §17(환경변수), §21(배포 전 체크리스트),
+  `AGENTS.md` 인증 항목, `README.md`(골격·루트), 스킬(`add-frontend-feature`·`stack-versions`·`add-backend-domain`)의 `localStorage`/`token.ts` 안내를 갱신했다.
+
+## 2026-10-02 — 골격 복사 시 빌드 산출물·`.env` 가 생성 프로젝트로 복사되던 문제 수정
+
+### Fixed (수정)
+
+- **골격 복사에서 산출물·비밀 제외** (`scaffold.ps1`·`scaffold.sh`) — 템플릿 저장소에서 개발/검증한 뒤 `skeleton/` 에 남은
+  `node_modules`·`.venv`·`.svelte-kit`·`build`·`.ruff_cache`·`.pytest_cache`·`__pycache__`·`.DS_Store`·`.env` 가 생성 프로젝트로
+  그대로 복사됐다. 복사된 `node_modules` 때문에 `pnpm install` 이 `ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY` 로 중단됐고, 실제
+  `.env` 가 있으면 템플릿의 `SECRET_KEY` 가 새 프로젝트로 샐 수 있었다. 이제 PowerShell 은 `robocopy /XD /XF`, bash 는
+  `tar --exclude` 로 원천 제외한다(nextjs 저장소와 동일한 처리). robocopy 가 숨김 항목도 복사하므로 닷파일·`.claude` 누락 보강
+  단계는 제거했다. 토큰 치환 단계도 같은 디렉터리(+ `.git`)를 걸러 재실행 시 산출물을 붙잡지 않는다.
+
 ## 2026-10-02 — pyenv 환경에서 스캐폴드가 Python 검증에 실패하던 문제 수정
 
 ### Fixed (수정)

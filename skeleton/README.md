@@ -96,9 +96,16 @@ pnpm dev
 
 스캐폴드에는 자체 계정(username/password) 로그인 플로우가 내장돼 있다:
 
-- 처음 백엔드를 실행하면 기본 관리자 **`admin` / `admin123`** 이 자동 생성된다(없을 때만, lifespan 시드).
+- 처음 백엔드를 실행하면 기본 관리자 **`admin`** 이 자동 생성된다(없을 때만, lifespan 시드). 비밀번호는 스캐폴드가 무작위로 만들어
+  `backend/.env` 의 `DEFAULT_ADMIN_PASSWORD` 에 넣고 완료 메시지에 출력한다 — 공용 기본 비밀번호는 없다.
+  시드는 `SEED_DEFAULT_ADMIN=true` 일 때만 돌고, ⛔ `APP_ENV=production` 에서 켜져 있으면 기동을 거부한다.
 - 흐름: **미인증 → `/login`** → 로그인 성공 → **메인(`/`)** → 랜딩(`/landing`, 시스템 상태) / **My(`/my`, 내 정보·로그아웃)**.
 - `users` 테이블은 `role`(일반 `user` / 관리자 `admin`)로 권한을 구분한다. 관리자 전용 API 는 `require_admin` 의존성으로 보호한다.
+- 토큰: access JWT(15분)는 **브라우저 메모리에만** 두고, refresh 토큰은 백엔드가 심는 **httpOnly 쿠키**(`refresh_token`, `Path=/api/v1/auth`)다(`REFRESH_TOKEN_TRANSPORT=cookie`). 새로고침하면 앱 시작 시 `POST /auth/refresh` 로 세션을 복원하고,
+  API 가 401 이면 refresh 를 한 번만 호출해 원 요청을 재시도한다. refresh 는 DB 세션(`auth_sessions`)으로 회전·재사용 감지·즉시 폐기된다.
+- 로그인 연속 실패가 `LOGIN_MAX_FAILURES`(5) 회면 `LOGIN_LOCKOUT_MINUTES`(15) 분 동안 **429** 로 잠긴다(`login_throttles`).
+- 테이블: `app_meta`(헬스 체크용), `users`, `auth_sessions`(refresh 세션), `login_throttles`(로그인 시도 제한) — 모두 Alembic(`0001`~`0003`).
+- 상세는 `ARCHITECTURE.md` §9(백엔드 계약)·§14(프론트 흐름).
 - ⚠️ 운영 배포 시 기본 관리자 비밀번호를 **즉시 변경**하라.
 
 ## DB 스키마 변경 (ARCHITECTURE.md §11)

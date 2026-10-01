@@ -1,15 +1,21 @@
 <script lang="ts">
-  import { goto } from "$app/navigation"
   import { resolve } from "$app/paths"
+  import { signOut } from "#lib/auth/session.js"
   import { createMe } from "#lib/queries/auth.js"
-  import { authStore } from "#lib/stores/auth.svelte.js"
 
   // My 화면 (ARCHITECTURE.md §14). 로그인 사용자 정보 + 로그아웃.
   const me = createMe()
 
-  const onLogout = () => {
-    authStore.logout()
-    goto(resolve("login"), { replaceState: true })
+  let loggingOut = $state(false)
+
+  // 로그아웃 = POST /auth/logout(서버 세션 폐기 + refresh 쿠키 삭제) → 상태·캐시 정리 → 로그인 화면.
+  const onLogout = async () => {
+    loggingOut = true
+    try {
+      await signOut()
+    } finally {
+      loggingOut = false
+    }
   }
 </script>
 
@@ -37,9 +43,10 @@
     <button
       type="button"
       onclick={onLogout}
-      class="mt-6 w-full rounded-lg bg-error-container py-2.5 font-semibold text-on-error-container"
+      disabled={loggingOut}
+      class="mt-6 w-full rounded-lg bg-error-container py-2.5 font-semibold text-on-error-container disabled:opacity-60"
     >
-      로그아웃
+      {loggingOut ? "로그아웃 중…" : "로그아웃"}
     </button>
     <a
       href={resolve("")}

@@ -5,7 +5,7 @@
 """
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, String
+from sqlalchemy import DateTime, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.security import now
@@ -18,4 +18,5 @@ class AppMeta(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     key: Mapped[str] = mapped_column(String(100), unique=True, index=True)
     value: Mapped[str] = mapped_column(String(500))
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+    # server_default: ORM 외 경로(psql 수동 INSERT, ETL)의 NOT NULL 위반 방지 (users 와 동일 정책).
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now, server_default=func.now())

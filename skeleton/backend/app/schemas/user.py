@@ -1,7 +1,9 @@
 """사용자/인증 스키마 (ARCHITECTURE.md §8) — Pydantic v2."""
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.core.security import MAX_PASSWORD_BYTES
+# 상한의 SSOT 는 해시 생성 지점(core.security)이다. 여기서는 같은 불변식을 HTTP 입력에 미리 적용해
+# 절단된 비밀번호가 동일 판정되는 착시를 막고 422 로 거부한다.
+from app.core.security import BCRYPT_MAX_PASSWORD_BYTES
 
 
 class LoginRequest(BaseModel):
@@ -10,16 +12,39 @@ class LoginRequest(BaseModel):
 
     @field_validator("password")
     @classmethod
-    def _within_bcrypt_limit(cls, v: str) -> str:
-        # 글자 수가 아니라 바이트 수가 기준이다 (한글 1자 = UTF-8 3바이트).
-        if len(v.encode("utf-8")) > MAX_PASSWORD_BYTES:
-            raise ValueError(f"비밀번호는 UTF-8 {MAX_PASSWORD_BYTES}바이트를 넘을 수 없습니다.")
+    def password_within_bcrypt_limit(cls, v: str) -> str:
+        if len(v.encode("utf-8")) > BCRYPT_MAX_PASSWORD_BYTES:
+            raise ValueError(f"비밀번호는 UTF-8 기준 {BCRYPT_MAX_PASSWORD_BYTES} bytes 이하여야 합니다.")
         return v
 
 
 class TokenResponse(BaseModel):
+    """로그인/리프레시 공통 응답 — 회전된 토큰 쌍과 각각의 유효 초.
+
+    expires_in/refresh_expires_in 은 절대 시각이 아니라 "지금부터 남은 초" 다
+    — 클라이언트가 서버와 시계를 맞출 필요 없이 갱신 시점을 계산할 수 있게 한다.
+    refresh_token 은 body 모드에서만 채워진다. cookie 모드에서는 httpOnly 쿠키로만 나가고
+    본문에는 null 이다 — JS 가 refresh 토큰을 읽을 수 없어야 한다(§9).
+    """
+
     access_token: str
+    refresh_token: str | None = None
     token_type: str = "bearer"
+    expires_in: int
+    refresh_expires_in: int
+
+
+# refresh 토큰 형식은 "<sid>.<urlsafe 43자>" (core.security). 상한은 형식 SSOT 에 맞춘
+# 엄밀값이 아니라 비정상 입력으로 SHA-256 를 대용량 문자열에 돌리지 않게 하는 방어선이다.
+REFRESH_TOKEN_MAX_LENGTH = 128
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str = Field(min_length=1, max_length=REFRESH_TOKEN_MAX_LENGTH)
+
+
+class LogoutRequest(BaseModel):
+    refresh_token: str = Field(min_length=1, max_length=REFRESH_TOKEN_MAX_LENGTH)
 
 
 class UserRead(BaseModel):

@@ -51,7 +51,7 @@ description: __PROJECT_NAME__ 백엔드에 새 도메인/리소스(예: orders, 
    - 경로는 `/api/v1/<resource>`(리소스 복수형). 버전 prefix는 `main.py`에서만.
 
 6. **테스트** `backend/tests/test_<domain>.py` — pytest + SQLite in-memory
-   - `conftest.py`의 `client` / `auth_client` 픽스처 사용, `dependency_overrides`로 격리.
+   - `conftest.py`의 `client` / `db_session` 픽스처 사용, `dependency_overrides`로 격리.
    - 작성한 실패 테스트가 통과(Green)할 때까지 최소 구현.
 
 ## 마무리

@@ -65,8 +65,8 @@ description: __PROJECT_NAME__ 의 고정 스택 버전과 버전별 주의사항
   ⚠️ **`strict: false` 가 필요하다** — 라우트 그룹 `(protected)` 때문에 strict 모드면 "prerender 되지 않은 경로" 로 빌드가 실패할 수 있다.
 - 루트 `src/routes/+layout.ts` 에 `export const ssr = false` · `export const prerender = true`. 이게 SPA 를 성립시키는 핵심이니 지우지 말 것.
   이 조합은 **정상**이다: prerender 가 빈 셸을 만들고 adapter-static 이 fallback 으로 덮어쓴다 → 빌드 로그의 `Overwriting build/index.html with fallback page.` 는 **에러가 아니다**.
-- ⚠️ **prerender 단계는 Node 에서 돈다** → `localStorage` 를 직접 만지면 빌드가 깨진다.
-  `lib/auth/token.ts` 의 `getToken`/`setToken`/`clearToken` 전부에 `$app/env` 의 **`browser` 가드 필수**, `(protected)/+layout.ts` 가드도 `if (browser && !getToken())` 형태여야 한다.
+- ⚠️ **prerender 단계는 Node 에서 돈다** → 브라우저 API(`location`, 쿠키 전송 요청 등)를 load 에서 바로 쓰면 빌드가 깨진다.
+  `lib/auth/session.ts` 의 `restoreSession()` 은 `$app/env` 의 **`browser` 가드**로 no-op 이 되고, `(protected)/+layout.ts` 가드도 `if (!browser) return` 후 판단한다.
 - ⛔ **SSR 전용 기능 금지** — `+page.server.ts`, `+layout.server.ts`, `hooks.server.ts`, `$env/dynamic/*`. 정적 빌드라 실행될 서버가 없어 동작하지 않는다.
 - 데이터 로딩은 클라이언트에서 axios + svelte-query 로 한다(§13). 백엔드는 별도 FastAPI 서버.
 - `(protected)` 같은 **라우트 그룹은 URL 에 나타나지 않는다**. 인증 가드는 그룹 `+layout.ts` 에 둔다(§14).

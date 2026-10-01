@@ -42,8 +42,9 @@ mindmap
       axios
       Tailwind CSS v4
     기본 내장 기능
-      JWT 로그인
-      관리자 계정 자동 시드
+      JWT 로그인 + httpOnly refresh 쿠키
+      refresh 회전·재사용 감지·로그인 잠금
+      관리자 계정 자동 시드(무작위 비밀번호)
       보호 라우트 가드
       백엔드·DB 상태 화면
     자동화
@@ -101,21 +102,23 @@ sequenceDiagram
     participant D as PostgreSQL
 
     U->>F: 루트 경로 접속
-    F->>F: protected 그룹 가드가 토큰 확인
-    F-->>U: 토큰 없음 → 로그인 화면
+    F->>A: POST /api/v1/auth/refresh (refresh 쿠키로 세션 복원 시도)
+    A-->>F: 쿠키 없음 → 401
+    F-->>U: protected 그룹 가드 → 로그인 화면
     U->>F: 아이디·비밀번호 입력
     F->>A: POST /api/v1/auth/login
-    A->>D: 사용자 조회 + bcrypt 검증
-    D-->>A: user
-    A-->>F: access_token
-    F->>F: localStorage 저장 후 메인으로 이동
-    F->>A: GET /api/v1/auth/me
+    A->>D: 잠금 확인 + 사용자 조회 + bcrypt 검증 + auth_sessions 생성
+    D-->>A: user, session
+    A-->>F: 본문 access_token + httpOnly 쿠키 refresh_token
+    F->>F: access 토큰은 메모리에만 두고 메인으로 이동
+    F->>A: GET /api/v1/auth/me (Bearer)
     A-->>F: 사용자 정보
     U->>F: 시스템 상태 화면 열기
     F->>A: GET /api/v1/health 와 /api/v1/health/db
     A->>D: 연결 확인
     A-->>F: 정상 응답
     F-->>U: 백엔드·데이터베이스 상태 표시
+    Note over F,A: 새로고침하면 앱 시작 시 refresh 쿠키로 세션 복원<br/>API 401 이면 refresh 를 한 번만 호출하고 원 요청 재시도
 ```
 
 ### 요청이 흐르는 계층
@@ -186,14 +189,14 @@ chmod +x scaffold.sh          # 최초 1회 (실행 권한이 없을 때)
 ### 스크립트가 하는 일 (전체 자동)
 
 1. **런타임 사전 검사** → 하한 미달이면 bootstrap 실행 후 재검증, 실패하면 골격 복사 전에 중단
-2. 이름/위치 입력 → `PascalCase`를 `snake_case`(DB명·토큰키)로 변환
+2. 이름/위치 입력 → `PascalCase`를 `snake_case`(DB명·패키지명)로 변환
 3. **DESIGN.md 적용 여부 질문** → 적용 시 `colors`/`typography`를 Tailwind `@theme`로 변환해 `frontend/src/app.css`에 주입(`DESIGN.md` 는 적용 여부와 무관하게 항상 포함)
 4. `skeleton/` 복사 + 토큰 치환(`__PROJECT_NAME__`, `__PROJECT_SNAKE__`, 테마) + 런타임 핀 파일 이관
-5. **PostgreSQL 접속정보(host/port/user/password/db) 질문** → `backend/.env`·`frontend/.env` 생성(`DATABASE_URL`·`SECRET_KEY` 주입)
+5. **PostgreSQL 접속정보(host/port/user/password/db) 질문** → `backend/.env`·`frontend/.env` 생성(`DATABASE_URL`·무작위 `SECRET_KEY`·무작위 관리자 비밀번호 `DEFAULT_ADMIN_PASSWORD`, `REFRESH_TOKEN_TRANSPORT=cookie` 주입). 기존 `backend/.env` 는 `.env.bak.<시각>` 으로 백업하고, 새 `.env` 는 현재 사용자만 읽도록 권한을 제한한다(`chmod 600` / ACL)
 6. 백엔드: `python -m venv .venv` + `pip install -r requirements.txt`
 7. **psql 로 DB 생성** → **Alembic `upgrade head` 로 테이블 생성**(DB는 항상 Alembic으로 관리 §11)
 8. 프론트: `pnpm install`
-9. 실행 방법(`uvicorn`, `pnpm dev`) 출력
+9. 실행 방법(`uvicorn`, `pnpm dev`)과 초기 관리자 계정(`admin` + 생성된 비밀번호) 출력
 
 ### 옵션 플래그
 
@@ -226,6 +229,20 @@ chmod +x scaffold.sh          # 최초 1회 (실행 권한이 없을 때)
 > 전역 설정(`~/.claude/CLAUDE.md` 등) 없이도 어떤 에이전트든 같은 규칙을 따르게 하기 위해서다.
 
 ## 검증 상태
+
+### 2026-10-02 공통 백엔드·쿠키 인증 전환 검증 (Windows 11, Python 3.13.14 / pnpm 11.28.3)
+
+`skeleton/backend` 를 공통 백엔드(nextjs 저장소)와 동일하게 맞추고 프론트를 메모리 access 토큰 + httpOnly refresh 쿠키로 바꾼 뒤 확인한 결과다.
+
+- 백엔드: 공통 백엔드와 `diff -r` 동일(`.env.example` 제외). `ruff check .` 통과, `pytest -q` 83건 통과, `-W error::DeprecationWarning` 으로도 83건 통과
+- 스캐폴드: `scaffold.ps1 -SkipDb -NoDesign`(pnpm install 포함) · `scaffold.sh --skip-db --skip-install --no-design` 모두 exit 0,
+  생성된 `backend/.env` 키 확인(`REFRESH_TOKEN_TRANSPORT=cookie`·`SEED_DEFAULT_ADMIN=true`·무작위 `DEFAULT_ADMIN_PASSWORD` 등), PowerShell 판 ACL 은 현재 사용자 단독
+- 프론트: `pnpm lint` · `pnpm check`(299 파일 0 error 0 warning) · `pnpm build` exit 0
+  (`@sveltejs/kit@3.0.0` 배포 24시간 이내라 `pnpm_config_minimum_release_age=0` 으로 우회)
+- 구동: PostgreSQL 16(docker)에 `alembic upgrade head`(0001→0003) 후 vite dev proxy 오리진으로 curl 확인 —
+  로그인 200(`Set-Cookie: refresh_token; HttpOnly; Path=/api/v1/auth; SameSite=lax`, 본문 `refresh_token: null`) → `/auth/me` 200 →
+  쿠키 refresh 200(회전) → 유예(60초) 경과 후 이전 쿠키 재사용 401 + 세션 폐기 → 재로그인 → 로그아웃 204 → refresh 401, 연속 실패 6회째 429
+- 브라우저 실제 렌더링(세션 복원·401 재시도 UI 동작)은 이번에 확인하지 않았다.
 
 ### 2026-10-02 의존성 상향 재검증 (Windows 11, Python 3.13.12 / Node 24.14.0 / pnpm 11.28.3)
 

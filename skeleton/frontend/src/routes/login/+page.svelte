@@ -1,14 +1,26 @@
 <script lang="ts">
+  import { isAxiosError } from "axios"
   import { goto } from "$app/navigation"
   import { resolve } from "$app/paths"
   import { createLogin } from "#lib/queries/auth.js"
   import { authStore } from "#lib/stores/auth.svelte.js"
 
   // 로그인 화면 (ARCHITECTURE.md §14). 성공 시 메인(/)으로 이동.
+  // 성공하면 백엔드가 httpOnly refresh 쿠키를 심고, access 토큰은 메모리 스토어에만 저장된다.
   const loginMutation = createLogin()
 
   let username = $state("")
   let password = $state("")
+
+  // 401 = 자격증명 오류, 429 = 계정 잠금(연속 실패 LOGIN_MAX_FAILURES 회 → LOGIN_LOCKOUT_MINUTES 분).
+  const errorMessage = $derived.by(() => {
+    const error = loginMutation.error
+    if (!error) return null
+    const status = isAxiosError(error) ? error.response?.status : undefined
+    if (status === 429) return "로그인 시도가 너무 많습니다. 잠시 후 다시 시도하세요."
+    if (status === 401) return "아이디 또는 비밀번호가 올바르지 않습니다."
+    return "로그인에 실패했습니다. 잠시 후 다시 시도하세요."
+  })
 
   // 이미 로그인 상태면 메인으로.
   $effect(() => {
@@ -54,9 +66,9 @@
       autocomplete="current-password"
     />
 
-    {#if loginMutation.isError}
-      <p class="mt-3 rounded-lg bg-error-container px-3 py-2 text-sm text-on-error-container">
-        아이디 또는 비밀번호가 올바르지 않습니다.
+    {#if errorMessage}
+      <p role="alert" class="mt-3 rounded-lg bg-error-container px-3 py-2 text-sm text-on-error-container">
+        {errorMessage}
       </p>
     {/if}
 
@@ -67,9 +79,5 @@
     >
       {loginMutation.isPending ? "로그인 중…" : "로그인"}
     </button>
-
-    <p class="mt-4 text-center text-xs text-on-surface-variant">
-      기본 관리자 계정: <code class="font-mono">admin / admin123</code>
-    </p>
   </form>
 </main>

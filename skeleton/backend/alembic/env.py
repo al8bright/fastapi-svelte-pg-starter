@@ -17,7 +17,7 @@ if str(backend_root) not in sys.path:
     sys.path.insert(0, str(backend_root))
 
 import app.models  # noqa: E402,F401  모든 모델 로드
-from app.config import get_settings  # noqa: E402
+from app.config import ENV_FILE, get_settings  # noqa: E402
 from app.db.base import Base  # noqa: E402
 from app.db.engine import postgres_connect_args  # noqa: E402
 
@@ -31,7 +31,7 @@ target_metadata = Base.metadata
 def get_url() -> str:
     url = get_settings().database_url
     if not url:
-        raise RuntimeError("DATABASE_URL 이 설정되지 않았습니다 (.env 확인).")
+        raise RuntimeError(f"DATABASE_URL 이 설정되지 않았습니다 ({ENV_FILE} 확인).")
     return url
 
 
@@ -56,6 +56,7 @@ def run_migrations_offline() -> None:
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
         compare_type=True,
+        compare_server_default=True,
     )
     with context.begin_transaction():
         context.run_migrations()
@@ -68,6 +69,7 @@ def run_migrations_online() -> None:
             connection=connection,
             target_metadata=target_metadata,
             compare_type=True,
+            compare_server_default=True,
         )
         with context.begin_transaction():
             context.run_migrations()

@@ -21,7 +21,7 @@
 - **API는 `/api/v1`**, 설정은 `get_settings()`+`@lru_cache`, 공통 의존성은 `app/dependencies.py`
 - **계층 분리** — 라우터는 얇게(HTTP만), 도메인 로직은 `services/`, 검증은 `schemas/`
 - **프론트**: axios + @tanstack/svelte-query + Svelte 5 runes, 패키지 매니저는 **pnpm**(npm 금지)
-- **인증**: Bearer JWT
+- **인증**: access JWT(메모리, 15분, `sid` 클레임) + refresh httpOnly 쿠키(DB `auth_sessions`, 회전·재사용 감지·즉시 폐기, `REFRESH_TOKEN_TRANSPORT=cookie`), 앱 시작 시 `/auth/refresh` 로 세션 복원, 로그인 잠금은 DB `login_throttles`(429) — ⛔ 토큰 `localStorage`/`sessionStorage` 저장 금지(§9, §14)
 - **변경 흐름**: `main`에서 작업하고 바로 커밋·push 한다. 브랜치와 PR은 선택이다(되돌리기 어렵거나 광범위한 변경, 리뷰가 필요할 때). ⛔ **push 전 테스트·린트 통과가 유일한 게이트**다 — CI는 push 이후 도는 사후 안전망이다. 하나의 커밋에는 Structural 또는 Behavioral 한 유형만 담는다.
 
 ## 작업 방식

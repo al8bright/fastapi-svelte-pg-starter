@@ -7,7 +7,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 from sqlalchemy.pool import StaticPool
 
-from app.config import Settings
+from app.config import ENV_FILE, Settings
 
 
 def postgres_connect_args() -> dict[str, str]:
@@ -15,7 +15,10 @@ def postgres_connect_args() -> dict[str, str]:
 
 
 def create_engine_from_settings(settings: Settings) -> Engine:
-    url = settings.database_url or "sqlite:///:memory:"
+    # DATABASE_URL 미설정 시 조용한 폴백 없이 fail-fast 한다 (alembic/env.py 와 동일 정책).
+    url = settings.database_url
+    if not url:
+        raise RuntimeError(f"DATABASE_URL 이 설정되지 않았습니다 ({ENV_FILE} 확인).")
     kwargs: dict = {}
     if url.startswith("sqlite"):
         kwargs["connect_args"] = {"check_same_thread": False}
