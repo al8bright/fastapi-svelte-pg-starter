@@ -52,6 +52,13 @@ if (Test-Path $_VersionsEnv) {
   }
 }
 
+# 런타임 핀 로드 — ⚠️ 반드시 Enable-VersionManagers 보다 먼저 읽어야 한다.
+# pyenv 는 "shim 이 PATH 에 있다"와 "어떤 버전을 쓴다"가 별개라, 활성화 시점에 핀 값이 필요하다.
+$_pyPinFile   = Join-Path $SkeletonDir '.python-version'
+$_pyPin       = if (Test-Path $_pyPinFile) { "$(Get-Content $_pyPinFile -TotalCount 1)".Trim() } else { "" }
+$_nodePinFile = Join-Path $SkeletonDir '.nvmrc'
+$_nodePin     = if (Test-Path $_nodePinFile) { "$(Get-Content $_nodePinFile -TotalCount 1)".Trim() -replace '^v', '' } else { "" }
+
 # pyenv-win / fnm 활성화 (설치돼 있으면 현재 세션에 적용)
 function Enable-VersionManagers {
   $pyenvRoot = "$env:USERPROFILE\.pyenv\pyenv-win"
@@ -60,6 +67,20 @@ function Enable-VersionManagers {
     $env:PYENV_ROOT = $pyenvRoot
     $env:PYENV_HOME = $pyenvRoot
     $env:Path = "$pyenvRoot\bin;$pyenvRoot\shims;" + ($env:Path -replace [regex]::Escape("$pyenvRoot\bin;") -replace [regex]::Escape("$pyenvRoot\shims;"))
+    # ⛔ PATH 에 shim 을 올리는 것과 "어떤 버전을 쓸지" 는 별개다. pyenv global 이 없거나 핀보다 낮으면
+    #    shim 이 실패하거나 옛 버전을 가리켜, bootstrap 이 핀을 설치·재사용한 뒤에도 검증 단계에서 실패한다.
+    #    ⚠️ 설치돼 있지 않은 버전을 지정하면 모든 shim 호출이 깨지므로 반드시 설치 여부를 확인한다.
+    $_installedNow = @($(try { pyenv versions --bare 2>&1 | Out-String } catch { "" }) -split '\r?\n' |
+      ForEach-Object { $_.Trim() } | Where-Object { $_ })
+    if ($_pyPin -and ($_installedNow -contains $_pyPin)) {
+      $env:PYENV_VERSION = $_pyPin
+    } else {
+      # 핀이 설치돼 있지 않으면 하한을 충족하는 설치본 중 가장 높은 것을 고른다 (옛 전역 버전 폴백 방지)
+      $_minPy = if ($_min['MIN_PYTHON']) { $_min['MIN_PYTHON'] } else { '3.13' }
+      $_cand = $_installedNow | Where-Object { $_ -match '^\d+\.\d+\.\d+$' -and $_.StartsWith("$_minPy.") } |
+        Sort-Object { [version]$_ } | Select-Object -Last 1
+      if ($_cand) { $env:PYENV_VERSION = $_cand }
+    }
   }
   if (Get-Command fnm -ErrorAction SilentlyContinue) {
     # PS 5.1 은 EAP=Stop 아래에서 네이티브 stderr 한 줄을 NativeCommandError 로 종료 예외화한다
@@ -71,11 +92,13 @@ function Enable-VersionManagers {
       $_fnmEnv = fnm env --use-on-cd 2>&1
       if ($LASTEXITCODE -eq 0) { $_fnmEnv | Out-String | Invoke-Expression }
     } catch {}
-    # 템플릿 루트에는 .nvmrc 가 없으므로 최소 Node 버전을 명시해 활성화
+    # .nvmrc 핀을 우선 존중하고, 실패하면 최소 Node 버전으로 활성화한다
+    # (템플릿 루트에는 .nvmrc 가 없으므로 cd 훅만으로는 활성화되지 않는다)
     $_nodeDefault = if ($_min['MIN_NODE']) { $_min['MIN_NODE'] } else { '24' }
+    $_nodeWanted  = if ($_nodePin) { $_nodePin } else { $_nodeDefault }
     try {
-      fnm use $_nodeDefault 2>&1 | Out-Null
-      if ($LASTEXITCODE -ne 0) { return }
+      fnm use $_nodeWanted 2>&1 | Out-Null
+      if ($LASTEXITCODE -ne 0) { fnm use $_nodeDefault 2>&1 | Out-Null }
     } catch {}
   }
 }
@@ -110,8 +133,7 @@ if (-not (_Meets $_pnpmHave $_minPnpm)) { $_needBootstrap = $true }
 #  - pyenv 가 있으면: 핀된 정확한 버전이 실제 설치돼 있어야 한다(없으면 bootstrap 이 설치).
 #  - pyenv 가 없으면: 핀을 강제할 수단이 없다. 하한을 충족하는 Python 을 그대로 쓰되,
 #    CI 는 .python-version 을 읽으므로 버전이 다르면 경고만 남긴다.
-$_pyPinFile = Join-Path $SkeletonDir '.python-version'
-$_pyPin = if (Test-Path $_pyPinFile) { "$(Get-Content $_pyPinFile -TotalCount 1)".Trim() } else { "" }
+# ($_pyPin 로드는 위 활성화 블록보다 앞에서 이미 끝났다)
 if ($_pyPin) {
   if (Get-Command pyenv -ErrorAction SilentlyContinue) {
     if (-not $_needBootstrap) {
@@ -137,6 +159,11 @@ if ($_needBootstrap) {
     Write-Warn2 "필수 도구 또는 Python·Node·pnpm 버전이 기준 미달 — bootstrap.ps1 을 먼저 실행합니다 …"
     $_PinDir = Join-Path ([System.IO.Path]::GetTempPath()) ("scaffold-pin-" + [guid]::NewGuid().ToString("N").Substring(0,8))
     New-Item -ItemType Directory -Force -Path $_PinDir | Out-Null
+    # 골격의 핀을 미리 심어 bootstrap 이 "기존 .python-version 핀 존중" 경로를 타게 한다.
+    # ⛔ 빈 폴더를 넘기면 bootstrap 이 핀을 못 읽고 임의의 최신 패치를 골라, 생성 프로젝트의
+    #    런타임 버전이 "스캐폴드를 돌린 날"에 따라 달라진다(재현 불가).
+    if (Test-Path $_pyPinFile)   { Copy-Item $_pyPinFile   (Join-Path $_PinDir '.python-version') -Force }
+    if (Test-Path $_nodePinFile) { Copy-Item $_nodePinFile (Join-Path $_PinDir '.nvmrc') -Force }
     # PS 5.1 은 스크립트/네이티브 명령 실패를 자동 예외화하지 않고, in-process 호출의
     # $LASTEXITCODE 는 내부 마지막 네이티브 명령의 잔존값이라 신뢰할 수 없다.
     # → 예외 포착 + bootstrap 결과(실제 런타임 버전) 검증으로 실패를 감지한다 (scaffold.sh 와 동일하게 실패 시 중단).
@@ -147,17 +174,18 @@ if ($_needBootstrap) {
       Write-Warn2 "bootstrap.ps1 실행 중 오류: $($_.Exception.Message)"
       $_bootstrapOk = $false
     }
-    Enable-VersionManagers
-    if ($_bootstrapOk -and (Get-Command fnm -ErrorAction SilentlyContinue)) {
-      $_nodeVer = if ($_min['MIN_NODE']) { $_min['MIN_NODE'] } else { '24' }
-      try {
-        fnm use $_nodeVer 2>&1 | Out-Null
-        if ($LASTEXITCODE -ne 0) { throw "종료 코드 $LASTEXITCODE" }
-      } catch {
-        Write-Warn2 "bootstrap 후 Node $_nodeVer 활성화 실패: $($_.Exception.Message)"
-        $_bootstrapOk = $false
-      }
+    # bootstrap 이 실제로 고정한 버전을 핀으로 재채택한 뒤 활성화한다.
+    # (핀이 pyenv 에 없어 bootstrap 이 다른 패치로 폴백했을 수 있다)
+    if (Test-Path (Join-Path $_PinDir '.python-version')) {
+      $_pyPin = "$(Get-Content (Join-Path $_PinDir '.python-version') -TotalCount 1)".Trim()
     }
+    if (Test-Path (Join-Path $_PinDir '.nvmrc')) {
+      $_nodePin = "$(Get-Content (Join-Path $_PinDir '.nvmrc') -TotalCount 1)".Trim() -replace '^v', ''
+    }
+    # fnm use 는 이 함수 안에서 핀 기준으로 수행된다.
+    # ⛔ 활성화 실패를 곧바로 중단 사유로 삼지 않는다 — 관리자 없이 기존 설치본을 재사용하는
+    #    정상 경로까지 막아버린다(scaffold.sh 와 동일). 판정은 아래 런타임 재검증이 한다.
+    Enable-VersionManagers
     $_pyAfter = _Get-SemVer $(try { python --version 2>&1 | Out-String } catch { "" })
     if ($_bootstrapOk -and -not (_Meets $_pyAfter $_minPython)) {
       Write-Warn2 "bootstrap 후에도 Python 이 $_minPython 이상이 아닙니다."

@@ -55,6 +55,15 @@ if [ -f "$_VERSIONS_ENV" ]; then
   . "$_VERSIONS_ENV"
 fi
 
+# 런타임 핀 로드 — ⚠️ 반드시 _activate_version_managers 보다 먼저 읽어야 한다.
+# pyenv 는 "shim 이 PATH 에 있다"와 "어떤 버전을 쓴다"가 별개라, 활성화 시점에 핀 값이 필요하다.
+_PY_PIN_FILE="$SKELETON_DIR/.python-version"
+_PY_PIN=""
+[ -f "$_PY_PIN_FILE" ] && _PY_PIN="$(head -n1 "$_PY_PIN_FILE" | tr -d '[:space:]')"
+_NODE_PIN_FILE="$SKELETON_DIR/.nvmrc"
+_NODE_PIN=""
+[ -f "$_NODE_PIN_FILE" ] && _NODE_PIN="$(head -n1 "$_NODE_PIN_FILE" | tr -d '[:space:]' | sed 's/^v//')"
+
 # pyenv / fnm 이 설치돼 있으면 셸 세션에 활성화 (시스템 Python/Node 대신 버전 관리 도구 우선)
 _activate_version_managers() {
   if command -v pyenv >/dev/null 2>&1; then
@@ -62,11 +71,26 @@ _activate_version_managers() {
     export PATH="$PYENV_ROOT/bin:$PATH"
     eval "$(pyenv init --path 2>/dev/null || true)"
     eval "$(pyenv init - 2>/dev/null || true)"
+    # ⛔ pyenv init 은 shim 을 PATH 에 올릴 뿐 버전을 고르지 않는다.
+    #    pyenv global 이 system(예: 3.9.6)이거나 비어 있으면 python3 는 system 을 가리키거나 실패해
+    #    bootstrap 이 3.13 을 설치·재사용한 뒤에도 검증 단계에서 실패한다.
+    #    ⚠️ 설치돼 있지 않은 버전을 지정하면 모든 shim 호출이 깨지므로 반드시 설치 여부를 확인한다.
+    if [ -n "${_PY_PIN:-}" ] && pyenv versions --bare 2>/dev/null | grep -qx "$_PY_PIN"; then
+      export PYENV_VERSION="$_PY_PIN"
+    else
+      # 핀이 설치돼 있지 않으면 하한을 충족하는 설치본 중 가장 높은 것을 고른다 (system 폴백 방지)
+      _pv="$(pyenv versions --bare 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' \
+             | awk -v min="${MIN_PYTHON:-3.13}" 'index($0, min ".") == 1 || $0 == min' \
+             | sort -V | tail -n1)"
+      [ -n "$_pv" ] && export PYENV_VERSION="$_pv"
+    fi
   fi
   if command -v fnm >/dev/null 2>&1; then
     eval "$(fnm env --use-on-cd 2>/dev/null || true)"
-    # 템플릿 루트에는 .nvmrc 가 없으므로 최소 Node 버전을 명시해 활성화
-    fnm use "${MIN_NODE:-24}" 2>/dev/null || true
+    # .nvmrc 핀을 우선 존중하고, 실패하면 최소 Node 버전으로 활성화한다
+    # (템플릿 루트에는 .nvmrc 가 없으므로 cd 훅만으로는 활성화되지 않는다)
+    fnm use "${_NODE_PIN:-${MIN_NODE:-24}}" >/dev/null 2>&1 \
+      || fnm use "${MIN_NODE:-24}" >/dev/null 2>&1 || true
   fi
 }
 _activate_version_managers
@@ -100,12 +124,9 @@ _NODE="$(_ext_ver "$(node --version 2>/dev/null || true)")"
 _meets "${MIN_NODE:-24}" "$_NODE" || _need_bootstrap=1
 _PNPM="$(_ext_ver "$(pnpm --version 2>/dev/null || true)")"
 _meets "${MIN_PNPM:-11}" "$_PNPM" || _need_bootstrap=1
-# skeleton/.python-version 핀 처리
+# skeleton/.python-version 핀 처리 (_PY_PIN 로드는 위 활성화 블록보다 앞에서 이미 끝났다)
 #  - pyenv 가 있으면: 핀된 정확한 버전이 실제 설치돼 있어야 한다(없으면 bootstrap 이 설치 시도).
 #  - pyenv 가 없으면: 핀을 강제할 수단이 없다. 하한을 충족하는 Python 을 쓰되 CI 와의 차이만 경고한다.
-_PY_PIN_FILE="$SKELETON_DIR/.python-version"
-_PY_PIN=""
-[ -f "$_PY_PIN_FILE" ] && _PY_PIN="$(head -n1 "$_PY_PIN_FILE" | tr -d '[:space:]')"
 if [ -n "$_PY_PIN" ]; then
   if command -v pyenv >/dev/null 2>&1; then
     if [ "$_need_bootstrap" = "0" ] && ! pyenv versions --bare 2>/dev/null | grep -qx "$_PY_PIN"; then
@@ -130,6 +151,11 @@ if [ "$_need_bootstrap" = "1" ]; then
   if [ -f "$_BOOTSTRAP" ]; then
     warn "필수 도구 또는 Python·Node·pnpm 버전이 기준 미달 — bootstrap.sh 를 먼저 실행합니다 …"
     _PIN_DIR="$(mktemp -d "${TMPDIR:-/tmp}/scaffold-pin.XXXXXX")"
+    # 골격의 핀을 미리 심어 bootstrap 이 "기존 .python-version 핀 존중" 경로를 타게 한다.
+    # ⛔ 빈 폴더를 넘기면 bootstrap 이 핀을 못 읽고 임의의 최신 패치를 골라, 생성 프로젝트의
+    #    런타임 버전이 "스캐폴드를 돌린 날"에 따라 달라진다(재현 불가).
+    [ -f "$_PY_PIN_FILE" ]   && cp "$_PY_PIN_FILE"   "$_PIN_DIR/.python-version"
+    [ -f "$_NODE_PIN_FILE" ] && cp "$_NODE_PIN_FILE" "$_PIN_DIR/.nvmrc"
     bash "$_BOOTSTRAP" --project-root "$_PIN_DIR"
     _rc=$?
     if [ "$_rc" -ne 0 ]; then
@@ -137,8 +163,12 @@ if [ "$_need_bootstrap" = "1" ]; then
       rm -rf "$_PIN_DIR"
       exit 1
     fi
+    # bootstrap 이 실제로 고정한 버전을 핀으로 재채택한 뒤 활성화한다.
+    # (핀이 pyenv 에 없어 bootstrap 이 다른 패치로 폴백했을 수 있다)
+    [ -f "$_PIN_DIR/.python-version" ] && _PY_PIN="$(head -n1 "$_PIN_DIR/.python-version" | tr -d '[:space:]')"
+    [ -f "$_PIN_DIR/.nvmrc" ] && _NODE_PIN="$(head -n1 "$_PIN_DIR/.nvmrc" | tr -d '[:space:]' | sed 's/^v//')"
     _activate_version_managers                                    # bootstrap 후 현재 프로세스에 재적용
-    command -v fnm >/dev/null 2>&1 && fnm use "${MIN_NODE:-24}" 2>/dev/null || true  # Node 버전 명시 활성화
+                                                                  # (fnm use 는 이 함수 안에서 핀 기준으로 수행된다)
 
     # 검증 기준은 "런타임이 하한을 충족하는가"이지 "pyenv·fnm 이 설치됐는가"가 아니다 —
     # 관리자 없이 기존 설치본을 재사용하는 경로가 정상 경로이기 때문이다.
