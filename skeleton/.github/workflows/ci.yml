@@ -70,5 +70,7 @@ jobs:
         run: pnpm lint
       - name: Type check (svelte-check)
         run: pnpm check
+      - name: Unit tests (vitest)
+        run: pnpm test
       - name: Build (SvelteKit + vite)
         run: pnpm build

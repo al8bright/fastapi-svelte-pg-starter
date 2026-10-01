@@ -5,7 +5,11 @@ declare global {
     // interface Error {}
     // interface Locals {}
     // interface PageData {}
-    // interface PageState {}
+    /** goto(url, { state }) 로 다음 화면에 넘기는 히스토리 상태 — page.state 로 읽는다. */
+    interface PageState {
+      /** 작업 결과 알림(예: 새 공지 저장 후 수정 화면으로 옮겨 가며 띄우는 문구). */
+      flash?: { tone: "success" | "error"; text: string }
+    }
     // interface Platform {}
   }
 }

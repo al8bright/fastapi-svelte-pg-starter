@@ -24,7 +24,7 @@ export function restoreSession(): Promise<void> {
   return restorePromise
 }
 
-/** 로그아웃 — 서버 세션 폐기(실패해도 진행) → 상태·쿼리 캐시 정리 → 로그인 화면. */
+/** 로그아웃 — 서버 세션 폐기(실패해도 진행) → 상태·쿼리 캐시 정리 → 공개 홈(/). */
 export async function signOut(): Promise<void> {
   try {
     await logout()
@@ -33,5 +33,5 @@ export async function signOut(): Promise<void> {
   }
   authStore.clear()
   queryClient.clear()
-  await goto(resolve("login"), { replaceState: true })
+  await goto(resolve(""), { replace: true })
 }

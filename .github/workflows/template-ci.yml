@@ -70,10 +70,11 @@ jobs:
           ruff check .
           pytest -q
 
-      - name: 생성물 프론트 검증 (lint + check + build)
+      - name: 생성물 프론트 검증 (lint + check + test + build)
         working-directory: ${{ runner.temp }}/CiDemo/frontend
         run: |
           pnpm install
           pnpm lint
           pnpm check
+          pnpm test
           pnpm build

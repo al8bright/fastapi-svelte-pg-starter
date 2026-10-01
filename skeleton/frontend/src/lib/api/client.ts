@@ -3,6 +3,7 @@ import { goto } from "$app/navigation"
 import { resolve } from "$app/paths"
 import type { TokenResponse } from "#lib/api/auth.js"
 import { queryClient } from "#lib/query-client.js"
+import { loginWithNext } from "#lib/returnTo.js"
 import { authStore } from "#lib/stores/auth.svelte.js"
 
 // axios 인스턴스 (ARCHITECTURE.md §13). baseURL 미설정 시 vite dev proxy(/api/v1) 사용.
@@ -13,7 +14,7 @@ import { authStore } from "#lib/stores/auth.svelte.js"
 //   withCredentials: true — 교차 오리진(VITE_API_BASE_URL)에서도 쿠키를 주고받는다
 //   (백엔드 CORS 는 allow_credentials=True + 명시 오리진. 쿠키가 SameSite=lax 라 same-site 배치 전제).
 // - 401 이면 refresh 를 single-flight 로 1번만 호출하고 원 요청을 1회 재시도한다.
-//   refresh 실패 = 세션 만료 → 상태·쿼리 캐시를 비우고 로그인 화면으로 보낸다.
+//   refresh 실패 = 세션 만료 → 상태·쿼리 캐시를 비우고 로그인 화면으로 보낸다(?next= 로 원래 위치를 담는다).
 const baseURL = import.meta.env.VITE_API_BASE_URL
   ? `${import.meta.env.VITE_API_BASE_URL}/api/v1`
   : "/api/v1"
@@ -45,12 +46,16 @@ export function refreshAccessToken(): Promise<string | null> {
   return refreshPromise
 }
 
-/** 세션 만료 처리 — 상태·쿼리 캐시를 비우고 로그인 화면으로 (이미 로그인 화면이면 이동하지 않는다). */
+/**
+ * 세션 만료 처리 — 상태·쿼리 캐시를 비우고 로그인 화면으로 (이미 로그인 화면이면 이동하지 않는다).
+ * 원래 위치를 ?next= 로 넘겨 다시 로그인하면 그 화면으로 돌아간다.
+ */
 export function expireSession(): void {
   authStore.clear()
   queryClient.clear()
   const loginPath = resolve("login")
-  if (location.pathname !== loginPath) void goto(loginPath, { replaceState: true })
+  if (location.pathname === loginPath) return
+  void goto(loginWithNext(loginPath, `${location.pathname}${location.search}${location.hash}`), { replace: true })
 }
 
 api.interceptors.request.use((config) => {

@@ -45,8 +45,9 @@ mindmap
       JWT 로그인 + httpOnly refresh 쿠키
       refresh 회전·재사용 감지·로그인 잠금
       관리자 계정 자동 시드(무작위 비밀번호)
-      보호 라우트 가드
-      백엔드·DB 상태 화면
+      공개 사용자 화면 — 배너·공지
+      관리자 콘솔 — 대시보드·공지·배너·사용자·세션·잠금
+      자체 리치 텍스트 에디터 + 업로드
     자동화
       scaffold.sh / scaffold.ps1
       런타임 부트스트랩
@@ -103,17 +104,20 @@ sequenceDiagram
 
     U->>F: 루트 경로 접속
     F->>A: POST /api/v1/auth/refresh (refresh 쿠키로 세션 복원 시도)
-    A-->>F: 쿠키 없음 → 401
-    F-->>U: protected 그룹 가드 → 로그인 화면
+    A-->>F: 쿠키 없음 → 401 (비로그인으로 시작)
+    F->>A: GET /api/v1/banners 와 /api/v1/notices
+    F-->>U: 공개 홈 — 배너·최신 공지 (로그인 불필요)
+    U->>F: 관리자 콘솔(/admin) 열기
+    F-->>U: admin 가드 → 로그인 화면(?next=/admin)
     U->>F: 아이디·비밀번호 입력
     F->>A: POST /api/v1/auth/login
     A->>D: 잠금 확인 + 사용자 조회 + bcrypt 검증 + auth_sessions 생성
     D-->>A: user, session
     A-->>F: 본문 access_token + httpOnly 쿠키 refresh_token
-    F->>F: access 토큰은 메모리에만 두고 메인으로 이동
+    F->>F: access 토큰은 메모리에만 두고 /admin 으로 복귀
     F->>A: GET /api/v1/auth/me (Bearer)
-    A-->>F: 사용자 정보
-    U->>F: 시스템 상태 화면 열기
+    A-->>F: 사용자 정보 (role=admin 이 아니면 403 화면)
+    U->>F: 관리자 콘솔 › 시스템 상태 열기
     F->>A: GET /api/v1/health 와 /api/v1/health/db
     A->>D: 연결 확인
     A-->>F: 정상 응답
@@ -216,7 +220,7 @@ chmod +x scaffold.sh          # 최초 1회 (실행 권한이 없을 때)
 ## 생성 직후
 
 1. 스크립트가 출력한 대로 백엔드(`uvicorn`)·프론트(`pnpm dev`)를 실행
-2. 브라우저 http://localhost:5173 → 랜딩 페이지에서 **백엔드·DB 연결 상태**가 "정상"이면 성공
+2. 브라우저 http://localhost:5173 → 공개 홈 화면이 보이면 성공. `admin` 으로 로그인해 **관리자 콘솔 › 시스템 상태**에서 백엔드·DB 연결이 "정상"인지 확인
 3. AI 에이전트에게: "`AGENTS.md`·`ARCHITECTURE.md`·`PLAN.md` 따라 개발 시작" → TDD(Red→Green→Refactor)
 
 ## 기준이 바뀌면
@@ -229,6 +233,20 @@ chmod +x scaffold.sh          # 최초 1회 (실행 권한이 없을 때)
 > 전역 설정(`~/.claude/CLAUDE.md` 등) 없이도 어떤 에이전트든 같은 규칙을 따르게 하기 위해서다.
 
 ## 검증 상태
+
+### 2026-10-02 사용자 화면·관리자 콘솔·리치 에디터 검증 (Windows 11, pnpm 11.28.3)
+
+공지사항·배너·관리자 API(공통 백엔드)와 SvelteKit 사용자 화면·관리자 콘솔·자체 리치 에디터를 넣은 뒤 확인한 결과다.
+
+- 백엔드: `ruff check .` 통과, `pytest -q` 319건 통과
+- 스캐폴드: `scaffold.ps1 -SkipDb -NoDesign`(pnpm install 포함) exit 0, `bash -n scaffold.sh`·PowerShell 구문 검사 통과, 토큰 잔재 없음, `pnpm-workspace.yaml` 변경 없음
+- 프론트: `pnpm lint` · `pnpm check`(409 파일 0 error 0 warning) · `pnpm test`(vitest 9 파일 179건) · `pnpm build` exit 0
+  (`@sveltejs/kit@3.0.0` 배포 24시간 이내라 `pnpm_config_minimum_release_age=0` 으로 우회)
+- 구동: PostgreSQL 16(docker)에 `alembic upgrade head`(0001→0004) 후 vite dev 오리진(프록시 `/api`·`/uploads`)으로 확인 —
+  관리자 로그인·쿠키 refresh, 에디터 이미지 업로드 → `/uploads` 로 이미지 열림, 공지(이미지·유튜브·`<script>`) 저장 시 정화, 한글 파일명 첨부 업로드·관리자 blob 다운로드,
+  게시 → 공개 목록·검색·상세(조회수)·공개 첨부 다운로드(`filename*`), 배너 이미지·생성·잘못된 링크/기간 422·활성 토글·순서 변경·`GET /banners`,
+  대시보드·사용자(자기 강등 409)·세션·로그인 잠금(429 → 해제), 토큰 없는 `/admin/*` 401, `/`·`/notices`·`/admin/*`·`/login`·`/me` 가 SPA HTML 200 — 50건 모두 통과
+- 브라우저 실제 렌더링(에디터 서식 명령·자르기·이탈 확인 등)은 이번에 확인하지 않았다 — `skeleton/README.md` "브라우저 수동 점검" 목록 참고.
 
 ### 2026-10-02 공통 백엔드·쿠키 인증 전환 검증 (Windows 11, Python 3.13.14 / pnpm 11.28.3)
 

@@ -5,6 +5,69 @@
 
 ---
 
+## 2026-10-02 — 공지사항·배너·관리자 API + 업로드 저장소·본문 HTML 정화 (네 템플릿 공통 백엔드) + 사용자 화면·관리자 콘솔 (SvelteKit)
+
+### Added (백엔드 — 공통)
+
+- **테이블 3종** (alembic `0004_notices_banners`) — `notices`(정화된 `body_html`, 고정·게시·`published_at`·조회수, `author_id` SET NULL),
+  `notice_attachments`(공지 CASCADE, 공지당 최대 10개), `banners`(이미지 key·크기, `link_url`, 노출 기간 `starts_at`/`ends_at`, 순서, 활성).
+- **공개 API** — `GET /notices`(게시분만, 고정 먼저 → 게시일 최신순, `page·size·q`), `GET /notices/{id}`(조회수 +1, 첨부 목록),
+  `GET /notices/{id}/attachments/{aid}`(attachment + RFC 5987 `filename*` 한글 파일명 + nosniff), `GET /banners`(활성 + KST 노출 기간 안).
+- **관리자 API** (`/admin/*`, 라우터 단위 `require_admin` — 비로그인 401, 일반 사용자 403) — 대시보드 집계(사용자·세션·잠금·공지·배너·DB 상태·Alembic 리비전),
+  사용자 목록·권한/활성 변경(자기 강등·비활성화 금지, 마지막 활성 관리자 보호 409, 비활성화 시 세션 전부 폐기), 세션 목록·강제 폐기,
+  로그인 잠금 목록·해제, 공지 CRUD·첨부 업로드/다운로드/삭제, 배너 CRUD·이미지 업로드·순서 변경, 에디터 이미지 업로드(`POST /admin/editor/images` → `{key,url,width,height}`).
+- **업로드 저장소** `app/core/storage.py` — `UPLOAD_DIR`(기본 `backend/uploads/`, `.gitignore`) 아래 서버 생성 키로만 저장.
+  이미지는 시그니처 + Pillow 검증(PNG·JPEG·WebP·GIF), EXIF 방향 반영 후 메타데이터 없이 재인코딩, 긴 변 2000px 초과 축소, GIF 는 원본 그대로.
+  첨부는 확장자 허용 목록·무작위 파일명(원본 이름은 DB). `public/` 만 `/uploads/public` 으로 정적 서빙하고 `private/` 첨부는 API 로만 내려간다.
+- **본문 HTML 정화** `app/core/sanitize.py`(nh3) — 유튜브 embed 외 iframe 제거 + sandbox 등 강제, `style`·`on*`·`javascript:`·`data:` 제거,
+  링크 `rel="noopener noreferrer"`. 공지 저장 시 서비스 계층에서 항상 정화하고, 정화 후 빈 본문은 422.
+- 새 설정 `UPLOAD_DIR`·`PUBLIC_FILES_BASE_URL`·`MAX_IMAGE_UPLOAD_MB`(5)·`MAX_ATTACHMENT_UPLOAD_MB`(20)(`backend/.env.example` 에 설명과 함께 추가),
+  의존성 `nh3==0.3.7`·`pillow==12.3.0`.
+- `ServiceError`·`StorageError` 전역 핸들러(`app/api/errors.py`) — 코드별 HTTP 상태 표 한 곳, 응답 `{"detail","code"}`.
+- 백엔드 테스트 107 → **319** 건(`test_sanitize`·`test_storage`·`test_uploads_serving`·`test_notices`·`test_banners`·`test_admin`).
+  백엔드는 react·nextjs·nuxt 저장소의 `skeleton/backend` 와 파일 단위로 같다(`.env.example` 만 이 템플릿 값).
+
+### Added (프론트엔드 — 사용자 화면 디자인 A · 관리자 콘솔 디자인 A)
+
+- **공개 사용자 화면** (라우트 그룹 `routes/(site)/` — 상단 내비 포털): 첫 화면 `/` 를 로그인 없이 공개. 홈은 배너 캐러셀(`GET /banners` — 이전/다음·점 버튼,
+  6초 자동 넘김은 마우스 올림·포커스·일시정지 버튼으로 멈춤, `prefers-reduced-motion` 이면 자동 넘김 없음, 외부 링크는 새 창 `noopener`)
+  — 배너가 없으면 기본 히어로, 주요 서비스(자리표시), 최신 공지 5건, 내 계정. `/notices`(고정 배지·첨부 표시·제목 검색·페이지, URL 파라미터),
+  `/notices/[id]`(게시일·조회수·`RichContent` 본문·첨부 `download_url`·목록으로), `/me`(내 정보, `(site)/(protected)` 가드). 계정 메뉴(내 정보·로그아웃)와 **admin 에게만** "관리자 콘솔" 링크.
+- **관리자 콘솔** (`routes/admin/` — 그룹형 사이드바 개요·콘텐츠·회원·보안·시스템, 현재 메뉴 `aria-current`, "로그인 잠금" 잠긴 계정 수 배지,
+  1024px 미만은 상단 메뉴 서랍): 대시보드(KPI·최근 세션 강제 종료·잠금 해제), 공지(목록·작성/수정 — 리치 에디터 + `uploadEditorImage`,
+  상단 고정·게시, 첫 저장 뒤 수정 URL 로 전환(`page.state.flash`)해 첨부 패널 — 여러 파일 순차 업로드·파일별 진행률/오류·확장자·용량·개수 사전 검사·Bearer blob 다운로드(원래 파일명)·삭제,
+  저장하지 않은 변경 이탈 확인 — `beforeNavigate` 확인 다이얼로그 + `beforeunload`), 배너(썸네일·기간·활성 토글 = PUT 전체 본문·위/아래 이동 = `PATCH /order`·삭제,
+  작성/수정 — 이미지 업로드 미리보기·대체 텍스트 필수·`link_url` 백엔드와 같은 규칙·`datetime-local` KST 기간), 사용자(검색·역할 필터·권한/활성 변경·세션 모두 종료,
+  409 `self_modification`·`last_admin` 한국어 안내), 세션(`?user_id=` 필터·강제 종료), 로그인 잠금(잠김 강조·해제), 시스템 상태(헬스 체크 + DB·Alembic 리비전).
+- **관리자 가드** — `routes/admin/+layout.ts` load 가 `restoreSession()` 을 기다린 뒤 비로그인 → `/login?next=<원래 위치>`, `/auth/me` 의 role≠admin → `error(403)`(루트 `+error.svelte` 의 403 화면).
+- **자체 리치 텍스트 에디터** (`lib/components/editor/` — 라이브러리 없음, contentEditable + execCommand): 서식·정렬·목록·인용·링크·형광펜, 이미지(버튼·붙여넣기·드롭, 업로드 전 canvas 자르기·회전·
+  긴 변 1600px WebP 변환, 모서리 핸들·프리셋 크기 조절, 대체 텍스트·다시 자르기·교체·삭제), 유튜브 임베드, 붙여넣기 정리. 순수 모듈 `lib/editor/richText.ts`·`imageTransform.ts`·`mediaHtml.ts` 는
+  React 판과 같은 파일이고, `execCommand` 는 `editorDom.ts` 의 `exec()` 한 곳, 프로그램적 변경은 selectNode → `exec("insertHTML")` 로 커밋한다. 다이얼로그는 `document.body` 로 옮겨 그린다.
+- API 모듈 `lib/api/notices.ts`·`banners.ts`·`admin.ts`·`common.ts`(계약과 같은 타입), svelte-query 팩토리 `lib/queries/notices·banners·admin`(파라미터는 getter),
+  공용 UI `lib/components/ui/*`(ConfirmDialog·Pagination·Chip·Loading·ErrorState·EmptyState·Notice·SearchForm·Icon·styles), `lib/apiError.ts`·`format.ts`·`linkUrl.ts`·`uploadRules.ts`·
+  `download.ts`·`site.ts`·`listParams.ts`(목록 page·q ↔ URL)·`returnTo.ts`(`?next=` — 사이트 내부 경로만).
+- 확장 디자인 토큰 기본값(`primary-fixed`·`outline`·`surface-container-low/high/highest`·`tertiary`·`error` 등)과 `.rich-text`·`.editor` 스타일을 `app.css` 에 추가 —
+  기본 테마(`-NoDesign`)에서도 동작하고, DESIGN.md 테마가 주입되면 그 값이 이긴다.
+- **프론트엔드 테스트 도입** — vitest 5 + jsdom(`pnpm test`, 설정은 `vite.config.ts` 의 `test`). 에디터 순수 모듈(React 판 테스트 그대로)·업로드 오류 문구·배너 폼 검증·`returnTo`·`listParams`,
+  그리고 별도 라이브러리 없이 `svelte` 의 `mount()` 로 그리는 컴포넌트 연기 테스트(리치 에디터 툴바·직렬화·유튜브 다이얼로그·이미지 선택 오버레이, 배너 캐러셀) — 9 파일 179 건.
+  CI(`skeleton/.github/workflows/ci.yml`·`template-ci.yml`)에 `pnpm test` 추가.
+
+### Changed (프론트엔드)
+
+- 로그인 후 홈이 공개 첫 화면이 됐다(이전: 로그인 필수 메인). `(protected)/+page.svelte`(메인)·`(protected)/landing`(랜딩) 삭제 — 시스템 상태는 관리자 콘솔 `/admin/system` 으로 옮겼다.
+  `/my` 는 `/me` 로 리다이렉트. 로그인 화면은 `?next=` 로 원래 위치에 복귀하고 "홈으로" 링크·422/5xx/네트워크 문구(`loginErrorMessage`)를 갖는다. 로그아웃은 공개 홈으로 간다.
+- 세션 만료(refresh 실패) 시 로그인 화면 주소에 `?next=<원래 위치>` 를 붙인다.
+- SvelteKit 3 의 `goto` 옵션명에 맞춰 `replaceState` → `replace`(목록 갱신은 `reset: false`).
+- Vite dev 프록시에 `/uploads` 추가(같은 백엔드). 운영은 앞단 리버스 프록시가 `/api`·`/uploads` 를 백엔드로 넘긴다(ARCHITECTURE §14 "오리진 배치").
+- 문서: `ARCHITECTURE.md` §3·§4·§8·§12(백엔드 — React 판과 같은 문구), §13(프론트 트리·테스트)·§14(화면 구성·관리자 가드·이탈 확인)·§17(업로드 키),
+  `README.md`(화면 구성·브라우저 수동 점검·nh3/pillow·vitest 버전), 스킬(`add-frontend-feature`·`stack-versions`), 루트 README·스캐폴드 완료 메시지의 확인 안내("홈 화면 → 관리자 콘솔 › 시스템 상태").
+
+### ⚠️ 기존 프로젝트에 반영할 때
+
+- `pip install -r requirements.txt` → `alembic upgrade head`(0004) → `backend/.env` 에 위 4개 키 추가(없으면 기본값). `backend/uploads/` 를 `.gitignore` 에 추가한다.
+- 프론트엔드: `frontend/src/routes`(그룹 `(site)`·`admin`)·`lib/*` 새 파일과 `app.css`·`app.d.ts`·`vite.config.ts`(`/uploads` 프록시·vitest)를 옮기고 `pnpm add -D vitest jsdom` 을 실행한다.
+  `(protected)/` 아래에 만든 화면은 `(site)/(protected)/`(사용자 레이아웃 안) 또는 `admin/`(관리자 콘솔)로 옮긴다.
+
 ## 2026-10-02 — 백엔드 보안 보강 (네 템플릿 공통)
 
 ### Added (추가)

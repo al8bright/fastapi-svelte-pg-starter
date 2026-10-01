@@ -14,8 +14,8 @@ description: __PROJECT_NAME__ 의 고정 스택 버전과 버전별 주의사항
 
 ## 2. 버전 스냅샷 (2026-10-02 기준)
 - **런타임**: Python ≥ 3.13 · Node ≥ 24 · pnpm ≥ 11 (PostgreSQL 고정 없음, 14+ 권장)
-- **백엔드**: FastAPI 0.142.2 · Uvicorn 0.54.0 · SQLAlchemy 2.1.1 · Alembic 1.20.0 · Pydantic 2.13.5 / settings 2.15.0 · psycopg2-binary 2.9.13 · PyJWT 2.15.1 · bcrypt 5.0.0 · python-multipart 0.0.32 · httpx2 2.13.1 · pytest 9.1.1 · ruff 0.16.9
-- **프론트**: svelte `5.57` · @sveltejs/kit `3.0` · @sveltejs/adapter-static `4.0` · @sveltejs/vite-plugin-svelte `7.3` · @sveltejs/load-config `0.2` · vite `8.3 (Rolldown)` · typescript `6.0` · svelte-check `4.7` · @tanstack/svelte-query `6.3` · axios `1.20` · tailwindcss `4.3` · @tailwindcss/vite `4.3` · eslint `10.11` · typescript-eslint `8.71` · eslint-plugin-svelte `3.23` · @types/node `24.x` · pnpm `11.28`
+- **백엔드**: FastAPI 0.142.2 · Uvicorn 0.54.0 · SQLAlchemy 2.1.1 · Alembic 1.20.0 · Pydantic 2.13.5 / settings 2.15.0 · psycopg2-binary 2.9.13 · PyJWT 2.15.1 · bcrypt 5.0.0 · python-multipart 0.0.32 · nh3 0.3.7 · pillow 12.3.0 · httpx2 2.13.1 · pytest 9.1.1 · ruff 0.16.9
+- **프론트**: svelte `5.57` · @sveltejs/kit `3.0` · @sveltejs/adapter-static `4.0` · @sveltejs/vite-plugin-svelte `7.3` · @sveltejs/load-config `0.2` · vite `8.3 (Rolldown)` · typescript `6.0` · svelte-check `4.7` · @tanstack/svelte-query `6.3` · axios `1.20` · tailwindcss `4.3` · @tailwindcss/vite `4.3` · eslint `10.11` · typescript-eslint `8.71` · eslint-plugin-svelte `3.23` · vitest `5.0` · jsdom `30.1` · @types/node `24.x` · pnpm `11.28`
 
 ## 3. ⚠️ 버전별 함정 (코드·설정 작성 시 반드시)
 
@@ -51,8 +51,11 @@ description: __PROJECT_NAME__ 의 고정 스택 버전과 버전별 주의사항
 - ⛔ **`$lib` 별칭이 없어졌다** → `package.json` 의 `"imports": { "#lib/*": "./src/lib/*" }`(Node subpath imports)로 **`#lib`** 를 쓴다.
   **확장자 필수**: `#lib/api/client.js`(실제 파일은 `.ts` — TS 규약대로 `.js` 로 적는다), `.svelte.ts` 는 `#lib/stores/auth.svelte.js`.
 - `$app/environment` → **`$app/env`**, `$app/stores` 제거(→ `$app/state`), `pushState`/`replaceState` → `goto(url, { shallow: true, state })`, `invalidateAll` → `refreshAll`.
-- ⚠️ **`resolve()` 의 pathname 은 앞의 `/` 없이** 쓴다: `resolve("login")`, `resolve("landing")`, 루트는 **`resolve("")`**.
-  `"/..."` 는 **라우트 ID** 로 해석돼 그룹까지 적어야 한다(`"/(protected)/my"`). 2.x 식 `resolve("/landing")` 은 svelte-check 타입 에러.
+- ⚠️ **`resolve()` 의 pathname 은 앞의 `/` 없이** 쓴다: `resolve("login")`, `resolve("notices")`, `resolve(`notices/${id}`)`, 루트는 **`resolve("")`**. 검색·해시도 붙일 수 있다(`resolve(`login?next=${encodeURIComponent(path)}`)`).
+  `"/..."` 는 **라우트 ID** 로 해석돼 그룹까지 적어야 한다(`"/(site)/(protected)/me"`). 2.x 식 `resolve("/notices")` 은 svelte-check 타입 에러.
+- ⚠️ **`goto()` 옵션 이름이 바뀌었다**: `replaceState` → **`replace`**(옛 이름은 deprecated), `keepFocus`·`noScroll` 은 없어지고 **`reset: false`**(스크롤·포커스 유지)로 합쳐졌다. `state` 는 그대로(`page.state`, 타입은 `app.d.ts` 의 `App.PageState`).
+- `page.url.searchParams`(`$app/state`)는 **`ReadonlyURLSearchParams`** 다 — `URLSearchParams` 를 받는 함수에 바로 넘기면 타입 에러. 고칠 값이면 `new URLSearchParams(x.toString())` 로 복사한다(`lib/listParams.ts`).
+- load 함수에서 `url.hash` 는 읽을 수 없다(브라우저만 안다) — 복귀 경로는 `pathname + search` 로 만든다.
 - `goto()` 는 앱 라우트로 해석되지 않는 목적지를 **reject** 한다 → 외부 이동은 `window.location.href`.
 - `tsconfig.json` 은 **`"extends": "$app/tsconfig"`**(생성 위치 `node_modules/$app`, `svelte-kit sync` 가 만든다) + `"include": ["src"]`. `.svelte-kit/tsconfig.json` 이 아니다.
 - eslint 는 `svelte.config.js` 를 import 할 수 없으므로 **`@sveltejs/load-config`** 의 `loadConfig("./", { traverse: false })` 로 vite 설정에서 svelte 설정을 읽어 `svelteConfig` 로 넘긴다.
@@ -62,14 +65,15 @@ description: __PROJECT_NAME__ 의 고정 스택 버전과 버전별 주의사항
 
 ### SvelteKit (SPA 모드)
 - 이 스캐폴드는 **정적 SPA**다. `vite.config.ts` 의 `sveltekit({ adapter: adapter({ fallback: 'index.html', strict: false }) })` (adapter-static 4).
-  ⚠️ **`strict: false` 가 필요하다** — 라우트 그룹 `(protected)` 때문에 strict 모드면 "prerender 되지 않은 경로" 로 빌드가 실패할 수 있다.
+  ⚠️ **`strict: false` 가 필요하다** — 라우트 그룹·동적 경로 때문에 strict 모드면 "prerender 되지 않은 경로" 로 빌드가 실패할 수 있다.
+  동적 경로(`notices/[id]`, `admin/notices/[id]/edit`, `[...rest]`)의 `+page.ts` 에는 `export const prerender = false` 를 둔다(fallback `index.html` 이 받는다).
 - 루트 `src/routes/+layout.ts` 에 `export const ssr = false` · `export const prerender = true`. 이게 SPA 를 성립시키는 핵심이니 지우지 말 것.
   이 조합은 **정상**이다: prerender 가 빈 셸을 만들고 adapter-static 이 fallback 으로 덮어쓴다 → 빌드 로그의 `Overwriting build/index.html with fallback page.` 는 **에러가 아니다**.
 - ⚠️ **prerender 단계는 Node 에서 돈다** → 브라우저 API(`location`, 쿠키 전송 요청 등)를 load 에서 바로 쓰면 빌드가 깨진다.
-  `lib/auth/session.ts` 의 `restoreSession()` 은 `$app/env` 의 **`browser` 가드**로 no-op 이 되고, `(protected)/+layout.ts` 가드도 `if (!browser) return` 후 판단한다.
+  `lib/auth/session.ts` 의 `restoreSession()` 은 `$app/env` 의 **`browser` 가드**로 no-op 이 되고, 가드(`(site)/(protected)/+layout.ts`·`admin/+layout.ts`)도 `if (!browser) return` 후 판단한다.
 - ⛔ **SSR 전용 기능 금지** — `+page.server.ts`, `+layout.server.ts`, `hooks.server.ts`, `$env/dynamic/*`. 정적 빌드라 실행될 서버가 없어 동작하지 않는다.
 - 데이터 로딩은 클라이언트에서 axios + svelte-query 로 한다(§13). 백엔드는 별도 FastAPI 서버.
-- `(protected)` 같은 **라우트 그룹은 URL 에 나타나지 않는다**. 인증 가드는 그룹 `+layout.ts` 에 둔다(§14).
+- `(site)`·`(protected)` 같은 **라우트 그룹은 URL 에 나타나지 않는다**. 인증 가드는 그룹 `+layout.ts`(관리자는 `admin/+layout.ts`)에 둔다(§14).
 
 ### Svelte 5 runes
 - 반응성은 룬으로: `$state` / `$derived` / `$props` / `$effect`.
@@ -78,6 +82,10 @@ description: __PROJECT_NAME__ 의 고정 스택 버전과 버전별 주의사항
 - 전역 상태는 **클래스 + 필드 `$state`** 를 `lib/stores/*.svelte.ts` 에 두고 **인스턴스를 export** 한다(`export const authStore = new AuthStore()`).
   파생값(`isAuthenticated`)은 zustand 처럼 함수가 아니라 **getter** 다 → `authStore.isAuthenticated` (⛔ 괄호 없음).
 - `$effect` 는 부수효과 전용. ⛔ 서버 데이터 패칭 용도로 쓰지 말 것(→ svelte-query).
+- DOM 노드·`Range`·`File`·`ImageBitmap` 을 담는 상태는 **`$state.raw`** 로 둔다(깊은 프록시로 감싸지 않음 — 리치 에디터의 선택·다이얼로그 상태).
+- `type="number"` 입력에 `bind:value` 를 쓰면 값이 **숫자**로 바뀐다 — 문자열로 다루려면 `value` + `oninput` 으로 쓴다.
+- Svelte 5 의 이벤트 위임은 마운트 대상과 **`document`** 둘 다에 걸린다 — `document.body` 로 옮긴 노드(모달 portal 액션)의 `onclick` 등도 그대로 동작한다.
+- `props` 초깃값을 `$state` 로 복사할 때는 `// svelte-ignore state_referenced_locally` 를 붙여 "처음 한 번만 읽는다"는 의도를 남긴다(바뀌면 호출부가 `{#key}` 로 다시 만든다).
 
 ### @tanstack/svelte-query
 - **svelte 어댑터 v6** 을 쓴다(현재 핀 `6.3`). React 판과 **API 이름이 다르다**: `useQuery` 아님 → **`createQuery`**, `useMutation` 아님 → **`createMutation`**. (`useQueryClient` 는 동일 이름)
@@ -86,6 +94,12 @@ description: __PROJECT_NAME__ 의 고정 스택 버전과 버전별 주의사항
 - ⛔ **컴포넌트 초기화 시점(`<script>` 최상단)에서만 호출.** 이벤트 핸들러 안에서 호출하면 `No QueryClient was found in Svelte context` 로 터진다. (래퍼 `lib/queries/*.ts` 는 룬을 안 쓰므로 평범한 `.ts` 로 둔다.)
 - 프로바이더는 `src/routes/+layout.svelte` 에서 한 번만 마운트한다. props = `{ client, children }`, 내부는 `{@render children()}`.
 - ⚠️ React 문서/예제를 그대로 복붙하면 깨진다. 정확한 시그니처는 설치된 버전의 타입 정의를 확인한다.
+
+### Vitest 5 + jsdom
+- 설정은 `vite.config.ts` 의 `test` 키(`defineConfig` 를 **`vitest/config`** 에서 import). 별도 `vitest.config.ts` 를 만들지 않는다 — sveltekit 플러그인·`#lib` 해석을 그대로 쓴다.
+- ⚠️ vitest 에서 svelte 컴포넌트를 `mount()` 하려면 **`resolve.conditions: ["browser"]`** 가 필요하다(없으면 svelte 서버 빌드가 잡혀 `lifecycle_function_unavailable: mount(...) is not available on the server`). 빌드에 영향이 없도록 `process.env.VITEST` 일 때만 켠다.
+- `$app/navigation`·`$app/paths` 를 import 하는 모듈(`lib/api/client.ts` 등)도 vitest 에서 불러진다. `$app/state` 의 `page` 를 읽는 컴포넌트는 테스트하지 않고, 순수 로직(`lib/*.ts`)으로 빼서 확인한다.
+- jsdom 에는 `document.execCommand`·canvas·`createImageBitmap` 이 없다 — 에디터는 `exec()` 가 false 를 돌려 DOM 폴백 경로를 탄다. 서식 명령·자르기는 브라우저 수동 점검(README).
 
 ### TypeScript / svelte-check
 - 타입 검사는 **`svelte-check`** 로 한다(`pnpm check` = `svelte-kit sync && svelte-check --tsconfig ./tsconfig.json`). ⛔ `tsc -b` 로 대체하지 말 것 — `.svelte` 파일을 못 본다.
@@ -97,8 +111,10 @@ description: __PROJECT_NAME__ 의 고정 스택 버전과 버전별 주의사항
 ### ESLint (9 → 10)
 - ESLint 는 **10** 이다(`@eslint/js` 도 10 동반). `typescript-eslint@8` · `eslint-plugin-svelte@3` 모두 `eslint: ^10` peer 지원.
 - `eslint-plugin-svelte@3` 의 `svelte/no-navigation-without-resolve` 는 recommended 포함이지만 **Kit 1·2 에서만 동작**한다(Kit 3 에서는 비활성 — 위 SvelteKit 3 절).
-  그래도 내부 이동은 `$app/paths` 의 **`resolve()`** 로 감싼다: `href={resolve("landing")}`, `goto(resolve(""))`, `redirect(302, resolve("login"))`. (경로가 svelte-check 로 타입 체크된다. 라우트 그룹 이름은 경로에 쓰지 않는다.)
+  그래도 내부 이동은 `$app/paths` 의 **`resolve()`** 로 감싼다: `href={resolve("notices")}`, `goto(resolve(""))`, `redirect(302, resolve("login"))`. (경로가 svelte-check 로 타입 체크된다. 라우트 그룹 이름은 경로에 쓰지 않는다.)
 - flat config(`frontend/eslint.config.js`)에 **`svelteConfig`** 를 넘겨야 한다 — `.svelte`/`.svelte.ts` 블록의 `languageOptions.parserOptions` 에 `{ parser: tseslint.parser, extraFileExtensions: [".svelte"], svelteConfig }`. (Kit 3: `svelteConfig` 는 `@sveltejs/load-config` 로 읽는다.)
+- eslint 10 은 쓰이지 않은 `eslint-disable` 주석을 경고한다 — Kit 3 에서 꺼진 규칙(`svelte/no-navigation-without-resolve`)에 disable 주석을 달지 말 것.
+- `svelte/prefer-svelte-reactivity`(recommended)는 컴포넌트 안의 `new Map()`·`new Set()` 을 오류로 본다 — 화면에 그리지 않는 내부 캐시면 이유를 적고 그 줄만 disable 한다.
 - `js.configs.recommended` 의 `no-undef` 가 `.svelte` 에도 걸리므로 `languageOptions.globals` 에 **`globals.browser` + `globals.node`** 를 넣는다(그래서 `globals` 가 devDependency).
 
 ### FastAPI 0.142 + Starlette 1.x
@@ -125,7 +141,7 @@ description: __PROJECT_NAME__ 의 고정 스택 버전과 버전별 주의사항
 - 자체 계정 비밀번호는 **bcrypt** 해시(`core/security` 의 `hash_password`/`verify_password`). JWT `sub` = user id.
 - 백엔드 린트는 **ruff**(`backend/pyproject.toml`): FastAPI `Depends` 등은 **B008 예외**(`extend-immutable-calls`), `alembic/` 제외, line-length 120. 새 의존성으로 lint 가 깨지면 이 설정을 먼저 본다.
 - 프론트 린트는 **eslint + typescript-eslint + eslint-plugin-svelte**(`frontend/eslint.config.js`, flat config).
-- **CI**(`.github/workflows/ci.yml`)가 push·PR(main) 마다 backend(ruff+pytest) / frontend(**eslint + svelte-check + build**) 를 실행. 워크플로는 생성 프로젝트(루트)에서만 동작한다.
+- **CI**(`.github/workflows/ci.yml`)가 push·PR(main) 마다 backend(ruff+pytest) / frontend(**eslint + svelte-check + vitest + build**) 를 실행. 워크플로는 생성 프로젝트(루트)에서만 동작한다.
 
 ## 4. 백엔드 핀 정책
 - `requirements.txt` 는 **`==` 정확 핀, 재현성 우선**(ARCHITECTURE.md §2).
@@ -137,6 +153,6 @@ description: __PROJECT_NAME__ 의 고정 스택 버전과 버전별 주의사항
 1. `scaffold.ps1 -Name tmp -Target <스크래치경로> -SkipDb -SkipInstall -NoDesign`
 2. 백엔드: `python -m venv .venv` → `pip install -r requirements.txt` → `ruff check .` → `pytest -q` (메이저/마이너 상향 시 `pytest -q -W error::DeprecationWarning` 도 1회)
    + 실제 PostgreSQL 로 `alembic upgrade head` → `alembic check`(예: `docker run --rm -e POSTGRES_PASSWORD=postgres -p 55434:5432 postgres:16`)
-3. 프론트: `pnpm install` → `pnpm lint` → `pnpm check`(svelte-check) → `pnpm build`. install 전후로 `pnpm-workspace.yaml` 이 바뀌지 않았는지 diff 로 확인
+3. 프론트: `pnpm install` → `pnpm lint` → `pnpm check`(svelte-check) → `pnpm test`(vitest) → `pnpm build`. install 전후로 `pnpm-workspace.yaml` 이 바뀌지 않았는지 diff 로 확인
    (24시간 이내 배포 버전을 검증할 때만 `pnpm_config_minimum_release_age=0` 환경변수 — §3 pnpm 절)
 4. 통과 시 핀 고정 후 **갱신할 곳을 모두**: SoT 파일 + `README.md` 표(+기준일) + 필요 시 `ARCHITECTURE.md` + **이 스킬의 스냅샷/주의(§2·§3)**. 커밋/PR은 [pr-workflow].

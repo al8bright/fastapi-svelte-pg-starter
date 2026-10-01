@@ -12,7 +12,7 @@
 - [ ] Alembic 초기화 + 초기 마이그레이션
 - [ ] `pytest` + SQLite in-memory + `conftest.py` 픽스처
 - [ ] SvelteKit `src/` 골격: axios `lib/api/client.ts`, runes 인증 스토어(`lib/stores/auth.svelte.ts`), `+layout.svelte`의 QueryClientProvider
-- [ ] `(protected)/+layout.ts` 인증 가드 + 로그인 흐름 (메모리 access 토큰 + httpOnly refresh 쿠키, 앱 시작 세션 복원 — §14)
+- [ ] `(site)/(protected)`·`admin/` `+layout.ts` 인증·관리자 가드 + 로그인 흐름 (메모리 access 토큰 + httpOnly refresh 쿠키, 앱 시작 세션 복원 — §14)
 - [ ] SvelteKit SPA 설정(`adapter-static` + `ssr = false`)
 - [ ] Tailwind v4 `@theme`, pnpm, ESLint + svelte-check
 - [ ] CI 동작 확인 — push 이후 사후 안전망(게이트는 push 전 로컬 검증). 협업자가 생기면 `main` 보호 + PR 흐름

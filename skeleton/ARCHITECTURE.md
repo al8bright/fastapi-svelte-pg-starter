@@ -78,7 +78,7 @@
   - SPA 고정: `vite.config.ts` 의 `sveltekit({ adapter: adapter({ fallback: 'index.html' }) })` + 루트 `+layout.ts`의 `export const ssr = false`.
     (SvelteKit 3 부터 `svelte.config.js` 는 없다 — Kit 설정은 `sveltekit(...)` 플러그인 옵션으로 넘긴다.)
     백엔드가 별도 FastAPI 서버이고 인증 상태(access 토큰)가 브라우저 메모리에만 있으므로 **SSR을 쓰지 않는다**(§14).
-- **라우팅**: **SvelteKit 파일 기반 라우팅**(`src/routes/`). 라우트 그룹 `(protected)`로 인증 가드(§14)
+- **라우팅**: **SvelteKit 파일 기반 라우팅**(`src/routes/`). 라우트 그룹 `(site)`(공개 사용자 화면)·`(site)/(protected)`(로그인 필요)와 `admin/`(관리자 콘솔)의 `+layout.ts` load 가 가드(§14)
 - **HTTP**: `axios` (인스턴스 + interceptor)
 - **서버 상태**: `@tanstack/svelte-query` 6.3 (캐싱/재요청/무효화)
 - **클라이언트 상태**: **Svelte 5 runes(`$state`)** — 토큰·세션 등 경량 전역 상태는 `.svelte.ts` 모듈에 둔다. **별도 상태 라이브러리를 쓰지 않는다.**
@@ -86,6 +86,7 @@
 - **패키지 매니저**: **pnpm** (npm 금지)
 - **타입 체크**: `svelte-check` (`tsc -b` 대체) — `pnpm check` = `svelte-kit sync && svelte-check --tsconfig ./tsconfig.json`
 - **린트**: ESLint + typescript-eslint + `eslint-plugin-svelte`
+- **테스트**: Vitest + jsdom (`pnpm test`) — 순수 모듈 + `svelte` 의 `mount()` 로 그리는 컴포넌트 연기 테스트(§13)
 
 > 프론트 표준 스택은 **axios + @tanstack/svelte-query + Svelte 5 runes**로 통일한다.
 > 매우 단순한 화면만 있는 소규모 도구는 `fetch + runes($state)`만으로 처리하는 것을 MAY로 허용하되,
@@ -103,7 +104,8 @@
 │   ├── alembic.ini
 │   ├── requirements.txt
 │   ├── pytest.ini
-│   └── tests/
+│   ├── tests/
+│   └── uploads/                 # UPLOAD_DIR 기본값 — 업로드 파일(public/·private/), .gitignore 대상
 ├── frontend/
 │   ├── src/
 │   ├── package.json
@@ -137,10 +139,16 @@ backend/app/
 │   │   ├── router.py       # 하위 라우터 집계
 │   │   ├── auth.py         # 자체 계정 /auth/login·refresh·logout·me; SSO는 도입 시 확장
 │   │   ├── health.py
+│   │   ├── notices.py      # 공개 공지 목록·상세·첨부 다운로드
+│   │   ├── banners.py      # 공개 배너(노출 기간 안의 활성 배너)
+│   │   ├── admin/          # /admin/* — 라우터 단위 require_admin (dashboard·users·notices·banners·editor)
 │   │   └── <domain>.py     # 도메인별 APIRouter (얇은 HTTP 계층)
-│   └── ...
+│   ├── errors.py           # ServiceError·StorageError → HTTP 상태 변환표(전역 핸들러)
+│   └── files.py            # 첨부 다운로드 응답(Content-Disposition), 업로드 크기 제한 읽기
 ├── core/
-│   └── security.py         # access JWT·refresh 불투명 토큰, 비밀번호 정책, now() (KST naive)
+│   ├── security.py         # access JWT·refresh 불투명 토큰, 비밀번호 정책, now() (KST naive)
+│   ├── storage.py          # UPLOAD_DIR 로컬 저장소 — 이미지 검증·재인코딩, 첨부 허용 목록, 키 해석 (§8)
+│   └── sanitize.py         # 리치 텍스트 본문 HTML 정화(nh3 허용 목록) (§8)
 ├── db/
 │   ├── base.py             # DeclarativeBase (Base)
 │   ├── engine.py           # 엔진 팩토리 (SQLite/PG 분기, KST connect_args)
@@ -148,12 +156,18 @@ backend/app/
 ├── models/
 │   ├── __init__.py         # 모든 모델 re-export (Alembic/메타데이터 등록용)
 │   ├── auth_session.py     # AuthSession(refresh 세션) + LoginThrottle(로그인 시도 제한) (§9)
+│   ├── notice.py           # Notice + NoticeAttachment
+│   ├── banner.py           # Banner
 │   └── <domain>.py
 ├── schemas/
 │   └── <domain>.py         # Pydantic BaseModel (요청/응답)
 └── services/
-    ├── <domain>_service.py # 비즈니스 로직
     ├── session_service.py  # refresh 세션 생성·회전·폐기 (§9)
+    ├── notice_service.py   # 공지 — 저장 직전 sanitize_html, 게시일·조회수, 첨부
+    ├── banner_service.py   # 배너 — 노출 기간 판정, 이미지 key 검증, 순서
+    ├── admin_service.py    # 대시보드 집계, 사용자 권한·활성(자기 강등·마지막 관리자 보호), 세션·스로틀 관리
+    ├── upload_service.py   # 공개 이미지 업로드(에디터·배너) 응답 조립
+    ├── <domain>_service.py # 비즈니스 로직
     └── exceptions.py       # ServiceError 등 도메인 예외
 ```
 
@@ -367,6 +381,60 @@ class Order(Base):
 - 함수형 서비스(`def create_order(db, user, data)`)를 기본으로 한다.
 - 실패는 `ServiceError(code=...)` 같은 **도메인 예외**로 던지고, 라우터에서 HTTP로 변환.
 - N+1 방지: 조회 시 `selectinload` 등 명시적 로딩 옵션.
+- `ServiceError(code)`(와 저장소의 `StorageError`)는 `app/api/errors.py` 의 전역 핸들러가 `STATUS_BY_CODE` 표로 HTTP 상태를 정한다(`not_found` 404, `self_modification`·`last_admin`·`too_many_attachments` 409, `file_too_large` 413, 검증류 422, 표에 없으면 400). 응답 본문은 `{"detail": <메시지>, "code": <코드>}`. 인증 라우터(`auth.py`)는 401/429 와 쿠키·헤더가 얽혀 있어 직접 변환한다.
+
+### 기본 제공 테이블
+
+| 테이블 | 리비전 | 용도 |
+|--------|--------|------|
+| `app_meta` | `0001_initial` | 연결 확인용 샘플(`/health/db`) |
+| `users` | `0002_users` | 자체 계정 — `role`(`user`/`admin`), `is_active` |
+| `auth_sessions`, `login_throttles` | `0003_auth_sessions` | refresh 세션(해시만 저장), 계정별 로그인 실패 카운터 (§9) |
+| `notices` | `0004_notices_banners` | 공지 — `body_html`(저장 시 정화), `is_pinned`, `is_published`, `published_at`(처음 게시 때 1회), `view_count`, `author_id`(FK users, `SET NULL`) |
+| `notice_attachments` | 〃 | 공지 첨부 — `notice_id`(FK, `CASCADE`), `storage_key`(private 키), `original_name`, `content_type`, `size_bytes`. 공지당 최대 10개 |
+| `banners` | 〃 | 배너 — `image_key`(public/banners 키)·`image_width/height`(서버가 잰 값), `link_url`(http(s) 또는 `/` 내부 경로만), `alt_text`, `starts_at`/`ends_at`(노출 기간, NULL=무제한), `sort_order`, `is_active` |
+
+### 파일 업로드 · 저장소 · 본문 HTML 정화
+
+**저장소(`core/storage.py`)** — 업로드 파일은 `UPLOAD_DIR`(기본 `backend/uploads/`, 상대 경로는 backend 기준) 아래에 **서버가 만든 키**로만 저장한다. 사용자 파일명은 디스크 경로에 쓰지 않는다.
+
+| 키 | 내용 | 노출 |
+|----|------|------|
+| `public/editor/YYYY/MM/DD/<uuid>.<ext>` | 에디터 본문 이미지 | `/uploads/public/...` 정적 서빙 (`Cache-Control: public, max-age=31536000, immutable`) |
+| `public/banners/YYYY/MM/DD/<uuid>.<ext>` | 배너 이미지 | 〃 |
+| `private/attachments/YYYY/MM/DD/<uuid>.<ext>` | 공지 첨부(원본 파일명은 DB) | ⛔ 정적 서빙 금지 — 다운로드 API 로만 |
+
+- **이미지**: 매직 바이트 + Pillow 로 실제 이미지인지 확인(PNG·JPEG·WebP·GIF 만, SVG·BMP 등 거부, 4천만 픽셀 초과 거부) → EXIF 방향 반영 → 긴 변 `MAX_LONG_EDGE`(2000px) 초과 시 축소 → **메타데이터 없이 재인코딩**(EXIF·위치 정보 제거). **GIF 는 애니메이션 보존을 위해 재인코딩하지 않고 그대로** 저장한다(크기 상한은 업로드 용량 제한). 애니메이션 WebP 는 첫 프레임만 남는다. 상한 `MAX_IMAGE_UPLOAD_MB`(5).
+- **첨부**: 확장자 허용 목록(`pdf hwp hwpx doc docx xls xlsx ppt pptx txt csv zip png jpg jpeg`), `Content-Type` 은 클라이언트 값이 아니라 확장자 표로 정한다. 상한 `MAX_ATTACHMENT_UPLOAD_MB`(20). 다운로드는 `Content-Disposition: attachment; filename="<ASCII 대체>"; filename*=UTF-8''<RFC 5987>` + `nosniff` + `Cache-Control: private, no-store`.
+- **경로 탈출 방지**: 키는 정규식(`(public/(editor|banners)|private/attachments)/YYYY/MM/DD/<32hex>.<ext>`)에 맞아야 해석하고, 해석된 경로가 `UPLOAD_DIR` 안인지 다시 확인한다. 정적 마운트 루트가 `UPLOAD_DIR/public` 이라 `../` 로도 private 에 닿지 않는다.
+- **URL**: 응답의 공개 파일 URL = `PUBLIC_FILES_BASE_URL` + `/uploads/` + key. 비우면 루트 상대(`/uploads/public/...`) — 프론트엔드가 같은 오리진이거나 `/uploads` 를 백엔드로 프록시할 때. 다른 오리진·BFF 구성은 백엔드 공개 주소를 넣는다. 첨부 `download_url` 도 같은 접두사를 쓴다.
+- **삭제**: 공지·첨부·배너 행을 지우면 커밋 후 파일도 지운다(배너 이미지는 다른 배너가 같은 키를 참조하지 않을 때만). 에디터 본문 이미지는 본문 HTML 이 참조하므로 자동으로 지우지 않는다 — 고아 파일 정리는 별도 배치 몫.
+- 업로드 크기는 핸들러가 상한+1 바이트까지만 읽어 판정한다. multipart 본문 자체는 그 전에 임시 파일로 받아지므로, 운영에서는 앞단 프록시(nginx `client_max_body_size` 등)에도 상한을 둔다.
+
+**본문 HTML 정화(`core/sanitize.py`, nh3)** — 리치 텍스트 본문은 **서비스 계층이 저장 직전에** `sanitize_html` 을 거친다(클라이언트를 믿지 않는다). 보기 화면에는 서버가 정화해 돌려준 HTML 만 넣는다.
+
+- 허용 태그: `p div br hr span h1–h6 strong b em i u s strike sub sup mark small ul ol li blockquote pre code a img table thead tbody tfoot tr th td caption colgroup col iframe`
+- 허용 속성: 모든 태그 `class`(값은 `align-left align-center align-right video` 만, 남는 값이 없으면 속성 제거) · `a`: `href target title` · `img`: `src alt width height title` · `iframe`: `src width height title allowfullscreen` · `div`: `data-youtube-video` · `td/th`: `colspan rowspan scope` · `ol`: `start` · `col`: `span`. `width/height` 는 1~4자리 정수만.
+- `iframe[src]` 는 `^https://www\.youtube(?:-nocookie)?\.com/embed/[A-Za-z0-9_-]{11}$` 만 — 그 외(다른 호스트, 쿼리 문자열)는 iframe 을 **내용째** 지운다. 남는 iframe 에는 `sandbox="allow-scripts allow-same-origin allow-popups allow-presentation"`·`loading="lazy"`·`referrerpolicy="strict-origin-when-cross-origin"` 를 강제한다.
+- URL 스킴 `http https mailto tel`(+상대 경로)만 — `javascript:`·`data:` 는 제거. `a` 에는 `rel="noopener noreferrer"` 강제.
+- `style`·`id`·`on*`·`srcdoc`·편집 전용 속성(`contenteditable`, `data-selected` 등)은 제거, `script`·`style` 은 내용째 제거.
+- 정화 후 글자·`src` 있는 `img`·`iframe` 이 하나도 없으면 빈 본문으로 422.
+- ⚠️ **에디터와 정화 허용 목록은 한 쌍이다.** 에디터에 서식·미디어를 추가하면 허용 목록과 `tests/test_sanitize.py` 를 같은 변경에서 고친다(허용 목록을 넓힐 땐 테스트를 먼저).
+
+### 공지·배너·관리자 API 요약
+
+| 경로 (`/api/v1` 기준) | 인증 | 설명 |
+|------|------|------|
+| `GET /notices?page&size&q` · `GET /notices/{id}` · `GET /notices/{id}/attachments/{aid}` | 없음 | 게시된 공지만(초안은 404). 고정 먼저 → 게시일 최신순. 상세 조회 시 `view_count` +1 |
+| `GET /banners` | 없음 | `is_active` + 노출 기간 안(KST 현재) — `sort_order`, `id` 순 |
+| `/admin/*` | `require_admin` | 라우터 단위 의존성 — 비로그인 401, 일반 사용자 403. 역할은 요청마다 DB 에서 읽어 강등 즉시 403 |
+| `GET /admin/dashboard` | 〃 | 사용자·세션·잠금·공지·배너 집계 + DB 상태 + Alembic 리비전 |
+| `GET /admin/users` · `PATCH /admin/users/{id}` · `DELETE /admin/users/{id}/sessions` | 〃 | 자기 강등·비활성화 금지, 마지막 활성 관리자 보호(409). 비활성화 시 세션 전부 폐기 |
+| `GET /admin/sessions` · `DELETE /admin/sessions/{id}` | 〃 | 살아 있는 세션 목록·강제 폐기 |
+| `GET /admin/login-throttles` · `DELETE /admin/login-throttles/{username}` | 〃 | 잠금·최근 24시간 실패 목록, 잠금 해제 |
+| `/admin/notices`(CRUD) · `/admin/notices/{id}/attachments` | 〃 | 저장 시 본문 정화, 첨부 업로드(multipart `file`)·다운로드·삭제 |
+| `/admin/banners`(CRUD) · `POST /admin/banners/image` · `PATCH /admin/banners/order` | 〃 | 이미지 먼저 업로드 → `image_key` 로 참조 |
+| `POST /admin/editor/images` | 〃 | multipart `file` → `{key, url, width, height}` |
 
 ---
 
@@ -481,6 +549,7 @@ CSP 는 `/docs`·`/redoc` 의 CDN·인라인 스크립트를 막으므로 백엔
   - `client`: `app.dependency_overrides[get_db]`를 적용한 기본 API 클라이언트.
   - `lifespan_client`: 기동·종료 훅과 기본 관리자 시드·경고를 검증하는 클라이언트.
 - skeleton 의 인증 회귀는 `tests/test_auth.py`(로그인·`/auth/me`)와 **`tests/test_auth_sessions.py`**(refresh 회전·재사용 감지 시 세션 폐기·동시 갱신 60초 유예·절대 수명 비연장·로그아웃 멱등·즉시 무효화·로그인 스로틀·비밀번호 정책), **`tests/test_auth_cookie_transport.py`**(cookie 모드 — 쿠키 속성·본문 `refresh_token=null`·쿠키 전용 refresh/logout·실패 시 쿠키 삭제·잠금 429), `tests/test_config.py`(`APP_ENV=production` fail-fast)가 고정한다(§9).
+- 업로드·정화·공지·배너·관리자 회귀는 `tests/test_sanitize.py`(정화 허용 목록 표, §8)·`test_storage.py`(재인코딩·축소·EXIF 제거·GIF 원본 유지·허용 목록·경로 탈출)·`test_uploads_serving.py`(public 정적 서빙, private 미노출)·`test_notices.py`·`test_banners.py`·`test_admin.py` 가 고정한다. autouse 픽스처 `upload_dir` 이 `UPLOAD_DIR` 을 테스트별 `tmp_path` 로 돌려 저장소에 파일을 남기지 않고, `admin_headers`·`user_headers` 픽스처가 실제 로그인으로 Bearer 헤더를 만든다.
 
 ```python
 @pytest.fixture(autouse=True)
@@ -501,7 +570,7 @@ frontend/
 ├── .env.example
 ├── package.json
 ├── pnpm-workspace.yaml          # allowBuilds (pnpm 11 빌드 스크립트 허용)
-├── vite.config.ts               # @tailwindcss/vite + sveltekit({ adapter: adapter-static fallback }), /api dev proxy
+├── vite.config.ts               # @tailwindcss/vite + sveltekit({ adapter: adapter-static fallback }), /api·/uploads dev proxy, vitest(test)
 ├── tsconfig.json
 ├── eslint.config.js
 ├── .gitignore                   # .svelte-kit/, build/, node_modules/, .env 등
@@ -511,31 +580,57 @@ frontend/
     ├── app.css                  # Tailwind v4 @import + @theme 토큰 + body 스타일
     ├── app.d.ts                 # SvelteKit App 네임스페이스 타입 선언
     ├── lib/
-    │   ├── api/
+    │   ├── api/                 # ★ 도메인별 API 함수 + 타입 (백엔드 schemas 와 동기화)
     │   │   ├── client.ts        # ★ axios 인스턴스(withCredentials) + Bearer 주입 + 401 → single-flight refresh·1회 재시도
-    │   │   ├── auth.ts          # login(), logout(), getMe() + User/UserRole/TokenResponse 타입
-    │   │   └── health.ts        # getHealth(), getDbHealth() + DbHealth 타입
+    │   │   ├── auth.ts          # login(), logout(), getMe(), loginErrorMessage() + User/UserRole/TokenResponse 타입
+    │   │   ├── health.ts        # getHealth(), getDbHealth() + DbHealth 타입
+    │   │   ├── common.ts        # Page<T>·PageParams·UploadedImage, cleanParams()
+    │   │   ├── notices.ts       # 공개·관리자 공지, 첨부 업로드(FormData `file`)·blob 다운로드
+    │   │   ├── banners.ts       # 공개·관리자 배너, 이미지 업로드, 순서 변경
+    │   │   └── admin.ts         # 대시보드·사용자·세션·로그인 잠금
     │   ├── auth/
     │   │   └── session.ts       # restoreSession()(앱 시작 시 쿠키로 세션 복원), signOut()
-    │   ├── queries/
-    │   │   ├── auth.ts          # createLogin(), createMe()        — svelte-query
-    │   │   └── health.ts        # createHealth(), createDbHealth() — svelte-query
+    │   ├── queries/             # svelte-query 팩토리 createXxx() — auth·health·notices·banners·admin
     │   ├── stores/
     │   │   └── auth.svelte.ts   # runes $state 전역 인증 스토어 (token=메모리 access 토큰, user)
+    │   ├── components/
+    │   │   ├── ui/              # 공용 UI(styles.ts·Icon·Chip·ConfirmDialog·Pagination·Loading·ErrorState·EmptyState·Notice·SearchForm)
+    │   │   ├── layout/          # AccountMenu(상단 계정 메뉴)·AdminSidebar·adminNav.ts(메뉴 정의)·PageHeader·SkipLink
+    │   │   ├── editor/          # RichTextEditor 와 하위 컴포넌트, editorDom.ts(exec 단일 진입점)·imageCanvas.ts
+    │   │   ├── admin/           # NoticeForm·AttachmentsPanel·BannerForm(+bannerForm.ts 검증)
+    │   │   ├── RichContent.svelte   # 서버가 정화한 본문 HTML 보기({@html} 은 여기 한 곳)
+    │   │   ├── BannerCarousel.svelte # 홈 배너 캐러셀(APG carousel)
+    │   │   └── HomeHero.svelte  # 배너가 없을 때의 기본 히어로
+    │   ├── editor/              # 리치 텍스트 에디터 순수 로직(richText·imageTransform·mediaHtml) + upload.ts(uploadEditorImage)
+    │   ├── apiError.ts          # API 오류 → 한국어 문구(도메인 code·413·422 배열 detail)
+    │   ├── format.ts            # KST naive 날짜 문자열 표시·datetime-local 변환(Date 로 재해석하지 않음)
+    │   ├── linkUrl.ts           # 배너 link_url 규칙(백엔드 validate_link_url 과 동일)
+    │   ├── uploadRules.ts       # 첨부 확장자·용량 사전 검사(백엔드 허용 목록과 동일)
+    │   ├── download.ts          # Blob 저장(Bearer 가 필요한 관리자 첨부 다운로드)
+    │   ├── listParams.ts        # 목록 page·q 를 URL 검색 파라미터로 읽고 쓰기
+    │   ├── returnTo.ts          # 로그인 후 복귀 경로(?next=) — 내부 경로만 허용
+    │   ├── site.ts              # SITE_NAME(스캐폴드 치환)
     │   └── query-client.ts      # 전역 QueryClient 단일 인스턴스 (세션 만료·로그아웃 시 clear)
+    ├── test/mockAdapter.ts      # 테스트 전용 axios 어댑터
     └── routes/
         ├── +layout.ts           # ssr = false; prerender = true; load → restoreSession()
         ├── +layout.svelte       # QueryClientProvider + app.css import (앱 부트스트랩)
-        ├── login/
-        │   └── +page.svelte     # /login
-        └── (protected)/         # 라우트 그룹 — URL 에 영향 없음, 인증 가드 담당
-            ├── +layout.ts       # restoreSession() 대기 → 미인증이면 redirect(302, resolve('login'))
-            ├── +layout.svelte   # 보호 영역 공통 레이아웃 ({@render children()})
-            ├── +page.svelte     # /          메인
-            ├── landing/
-            │   └── +page.svelte # /landing   백엔드·DB 상태
-            └── my/
-                └── +page.svelte # /my        내 정보·로그아웃
+        ├── +error.svelte        # 전체 화면 오류 — 403(관리자 아님)·404·그 밖
+        ├── login/+page.svelte   # /login (?next= 복귀)
+        ├── (site)/              # 라우트 그룹 — 공개 사용자 화면(상단 내비 레이아웃). URL 에 영향 없음
+        │   ├── +layout.svelte   # 상단 내비 + 계정 메뉴 + 푸터
+        │   ├── +error.svelte    # 레이아웃 안 404
+        │   ├── +page.svelte     # /              홈(배너·서비스·최신 공지·내 계정)
+        │   ├── notices/         # /notices, /notices/[id]
+        │   ├── my/+page.ts      # /my → /me (이전 경로 호환)
+        │   ├── [...rest]/       # 없는 주소 → 404
+        │   └── (protected)/     # 로그인 필요 — +layout.ts 가드
+        │       └── me/          # /me 내 정보·로그아웃
+        └── admin/               # /admin/* 관리자 콘솔 — +layout.ts 가드(비로그인 → 로그인, 비관리자 → 403)
+            ├── +layout.svelte   # 그룹형 사이드바 콘솔
+            ├── +page.svelte     # /admin 대시보드
+            ├── notices/ · banners/ · users/ · sessions/ · login-throttles/ · system/
+            └── [...rest]/       # 콘솔 안 없는 주소 → /admin
 ```
 
 `lib/api/client.ts` (axios 표준 — 인증 흐름은 §14):
@@ -545,6 +640,7 @@ import { goto } from "$app/navigation"
 import { resolve } from "$app/paths"
 import type { TokenResponse } from "#lib/api/auth.js"
 import { queryClient } from "#lib/query-client.js"
+import { loginWithNext } from "#lib/returnTo.js"
 import { authStore } from "#lib/stores/auth.svelte.js"
 
 // axios 인스턴스 (ARCHITECTURE.md §13). baseURL 미설정 시 vite dev proxy(/api/v1) 사용.
@@ -587,12 +683,13 @@ export function refreshAccessToken(): Promise<string | null> {
   return refreshPromise
 }
 
-/** 세션 만료 처리 — 상태·쿼리 캐시를 비우고 로그인 화면으로 (이미 로그인 화면이면 이동하지 않는다). */
+/** 세션 만료 처리 — 상태·쿼리 캐시를 비우고 로그인 화면으로(?next= 원래 위치). 이미 로그인 화면이면 이동하지 않는다. */
 export function expireSession(): void {
   authStore.clear()
   queryClient.clear()
   const loginPath = resolve("login")
-  if (location.pathname !== loginPath) void goto(loginPath, { replaceState: true })
+  if (location.pathname === loginPath) return
+  void goto(loginWithNext(loginPath, `${location.pathname}${location.search}${location.hash}`), { replace: true })
 }
 
 api.interceptors.request.use((config) => {
@@ -724,6 +821,17 @@ export function createLogin() {
 - **서버 상태는 svelte-query**(`createQuery`/`createMutation`), **직접 `$state`+`$effect`로 데이터 패칭 금지**.
 - **클라이언트 상태(access 토큰·사용자·UI)는 runes**(`$state`) — 전역은 `lib/stores/*.svelte.ts`, 지역은 컴포넌트 내 `$state`. ⛔ 토큰을 `localStorage`/`sessionStorage` 에 두지 않는다(§14).
 - API 함수는 `lib/api/<domain>.ts`에 모으고, 컴포넌트는 `lib/queries/`의 쿼리 팩토리를 통해 접근한다.
+- 쿼리 파라미터가 URL·props 에서 오면 **getter 로 넘긴다** — `createPublicNotices(() => ({ page: params.page, size: 10 }))`. accessor 안에서 읽어야 값이 바뀔 때 쿼리 키가 따라 바뀐다.
+- 목록의 `page`·`q`·필터는 URL 검색 파라미터에 둔다(`lib/listParams.ts` — 읽기 `page.url.searchParams`, 쓰기 `goto(resolve("…") + searchWith(...), { reset: false })`).
+
+### 프론트엔드 테스트 (vitest)
+
+- `pnpm test` = `vitest run`(jsdom). 설정은 `vite.config.ts` 의 `test` 키 — `defineConfig` 를 `vitest/config` 에서 가져온다.
+  vitest 실행 중에만 `resolve.conditions: ["browser"]` 를 켜 svelte 의 브라우저 빌드를 쓴다(없으면 `mount()` 가 서버 빌드로 잡혀 실패).
+- 대상: 에디터 순수 모듈(`lib/editor/richText·imageTransform·mediaHtml` — 계산·직렬화·붙여넣기 정리), 업로드 오류 문구(`upload.test.ts`, `test/mockAdapter.ts` 로 axios 어댑터 대체 — 백엔드 없이 돈다),
+  배너 폼 검증(`bannerForm.test.ts`), `returnTo`·`listParams`, 그리고 **별도 테스트 라이브러리 없이** `svelte` 의 `mount()`·`flushSync()` 로 그리는 컴포넌트 연기 테스트
+  (`RichTextEditor.test.ts` — 툴바·직렬화 onChange·유튜브 다이얼로그(body 포털)·이미지 선택 오버레이, `BannerCarousel.test.ts` — 이전/다음·자동 넘김 멈춤·reduced motion·링크).
+- jsdom 에는 `execCommand`·canvas 가 없다 — 실제 서식 명령·자르기는 브라우저에서 확인한다(README 수동 점검 목록). `$app/*` 를 import 하는 모듈도 SvelteKit 플러그인 덕에 vitest 에서 그대로 불러진다.
 
 ---
 
@@ -738,24 +846,25 @@ export function createLogin() {
 
 - ⛔ 토큰을 `localStorage`/`sessionStorage`/JS 가 읽을 수 있는 쿠키에 저장하지 않는다 — XSS 한 번에 장기 세션이 탈취된다.
 - **앱 시작(세션 복원)**: `lib/auth/session.ts` 의 `restoreSession()` 이 페이지 로드당 1회 `POST /auth/refresh`(쿠키 자동 전송)로 access 토큰을 다시 받아 메모리에 넣는다.
-  루트 `+layout.ts` 와 `(protected)/+layout.ts` 의 `load` 가 **같은 Promise 를 기다린 뒤** 인증 여부를 판단한다 —
+  루트 `+layout.ts` 와 가드(`(site)/(protected)/+layout.ts`·`admin/+layout.ts`)의 `load` 가 **같은 Promise 를 기다린 뒤** 인증 여부를 판단한다 —
   레이아웃 load 는 병렬로 돌므로 보호 가드가 직접 기다려야 새로고침 시 로그인 화면으로 깜빡 튕기지 않는다. 실패(쿠키 없음·만료·폐기)는 조용히 비로그인 상태로 시작한다.
 - **요청**: `lib/api/client.ts` 의 axios 인스턴스는 `withCredentials: true` 이고, 요청 인터셉터가 메모리의 access 토큰을 Bearer 로 주입한다.
 - **401 처리**: `/auth/login`·`/auth/refresh`·`/auth/logout` 을 제외한 요청이 401 이면 refresh 를 **single-flight**(동시 401 이 여럿이어도 1번)로 호출하고 원 요청을 **1회만** 재시도한다.
-  refresh 는 인터셉터가 없는 별도 인스턴스로 보낸다(무한 루프 방지). refresh 실패 = 세션 만료 → `expireSession()` 이 스토어·**svelte-query 캐시**(`queryClient.clear()`)를 비우고 `goto(resolve('login'), { replaceState: true })`.
-- **로그인**: `createLogin()` → `POST /auth/login` → access 토큰을 스토어에 저장하고 `/auth/me` 로 사용자 로드 → 메인(`/`)으로 이동. refresh 쿠키는 백엔드 응답의 `Set-Cookie` 로 심어진다.
+  refresh 는 인터셉터가 없는 별도 인스턴스로 보낸다(무한 루프 방지). refresh 실패 = 세션 만료 → `expireSession()` 이 스토어·**svelte-query 캐시**(`queryClient.clear()`)를 비우고 로그인 화면(`?next=` 원래 위치)으로 `goto(…, { replace: true })`.
+- **로그인**: `createLogin()` → `POST /auth/login` → access 토큰을 스토어에 저장하고 `/auth/me` 로 사용자 로드 → `?next=`(사이트 내부 경로만, `lib/returnTo.ts`) 또는 홈(`/`)으로 이동. refresh 쿠키는 백엔드 응답의 `Set-Cookie` 로 심어진다.
   실패 문구는 상태 코드로 구분한다 — **401** 자격증명 오류, **429** 잠금(`LOGIN_MAX_FAILURES` 회 연속 실패 → `LOGIN_LOCKOUT_MINUTES` 분, §9).
-- **로그아웃**: `signOut()` → `POST /auth/logout`(인증 불요·항상 204, 서버 세션 폐기 + 쿠키 삭제) → 스토어·쿼리 캐시 정리 → `/login`. 네트워크 오류여도 클라이언트 상태는 비운다.
-- **오리진 배치**: 개발은 vite dev proxy(`/api` → `http://localhost:8000`)로 프론트와 **같은 오리진**이라 쿠키가 그대로 오간다(`VITE_API_BASE_URL` 비움).
+- **로그아웃**: `signOut()` → `POST /auth/logout`(인증 불요·항상 204, 서버 세션 폐기 + 쿠키 삭제) → 스토어·쿼리 캐시 정리 → 공개 홈(`/`). 네트워크 오류여도 클라이언트 상태는 비운다.
+- **오리진 배치**: 개발은 vite dev proxy(`/api`·`/uploads` → `http://localhost:8000`)로 프론트와 **같은 오리진**이라 쿠키가 그대로 오가고 업로드 파일의 루트 상대 URL(`/uploads/public/...`)도 그대로 열린다(`VITE_API_BASE_URL` 비움).
+  **운영**은 정적 호스팅(`build/`)과 같은 오리진에서 리버스 프록시(nginx 등)가 `/api` 와 `/uploads` 를 백엔드로 넘기는 배치를 권장한다(`PUBLIC_FILES_BASE_URL` 비움). 프록시 없이 API 를 다른 오리진에 두면 백엔드 `PUBLIC_FILES_BASE_URL` 에 백엔드 공개 주소를 넣거나, 프론트의 `resolveUploadUrl()`(`lib/editor/upload.ts`)이 `VITE_API_BASE_URL` 을 붙인다. 업로드 상한은 앞단 프록시(`client_max_body_size` 등)에도 둔다.
   `VITE_API_BASE_URL` 로 API 를 다른 오리진에 두면 `withCredentials` 로 쿠키를 보내며, 백엔드 `CORS_ORIGINS` 에 프론트 오리진을 **명시**해야 한다(`allow_credentials=True` 라 `*` 불가).
   쿠키가 `SameSite=Lax` 이므로 프론트와 API 는 **같은 사이트**(예: `app.example.com` ↔ `api.example.com`)여야 한다 — 다른 사이트면 refresh 쿠키가 전송되지 않아 새로고침마다 로그아웃된다.
   운영(HTTPS)은 `COOKIE_SECURE=true` 필수(§9, `APP_ENV=production` 에서 false 면 기동 거부).
 - **SSO**(도입 시): `routes/login/+page.svelte`에서 `window.location.href = ${VITE_BACKEND_URL}/api/v1/auth/login`.
   백엔드 콜백이 세션을 만들고 refresh 쿠키를 심은 뒤 프론트로 리다이렉트하면, 앱 시작의 `restoreSession()` 이 그대로 access 토큰을 받는다 — 토큰을 URL 로 넘기지 않는다.
-- **보호 라우트**: 라우트 그룹 `(protected)/`의 `+layout.ts` 가드가 담당한다(미인증 시 `redirect(302, resolve('login'))`).
-  그룹 이름은 괄호라서 **URL 에 나타나지 않는다** — 보호 대상 페이지를 이 디렉토리 아래로 옮기기만 하면 된다.
+- **보호 라우트**: 로그인만 필요한 화면은 `(site)/(protected)/`(가드 `+layout.ts` — 미인증 시 `redirect(302, loginWithNext(resolve('login'), 원래 경로))`), 관리자 화면은 `admin/`(가드 `+layout.ts` — 추가로 `/auth/me` 의 role≠admin 이면 `error(403)`)이 담당한다.
+  그룹 이름은 괄호라서 **URL 에 나타나지 않는다** — 보호 대상 페이지를 해당 디렉토리 아래로 옮기기만 하면 된다.
 - ⚠️ `restoreSession()` 에는 **`$app/env` 의 `browser` 가드가 필수**다. `ssr = false` 라도 빌드의 **prerender 단계는 Node 에서 돌아** load 가 실행된다(쿠키·`location` 이 없다).
-- ⚠️ 내부 이동 경로는 `$app/paths` 의 **`resolve()`** 로 감싼다(`href={resolve('landing')}`, `goto(resolve(''))`).
+- ⚠️ 내부 이동 경로는 `$app/paths` 의 **`resolve()`** 로 감싼다(`href={resolve('notices')}`, `resolve(`notices/${id}`)`, `goto(resolve(''))`).
   SvelteKit 3 의 pathname 은 **앞의 `/` 없이** 쓰고(루트 = `''`), 경로는 `svelte-check` 가 타입으로 검사한다.
   (`eslint-plugin-svelte@3.23` 의 `svelte/no-navigation-without-resolve` 는 Kit 3 에서 비활성 — lint 가 아니라 규칙으로 지킨다.)
 
@@ -763,14 +872,19 @@ export function createLogin() {
 src/routes/
 ├── +layout.ts               # ssr = false / prerender = true (SPA 고정) + load → restoreSession()
 ├── +layout.svelte           # QueryClientProvider(#lib/query-client) + app.css
-├── login/+page.svelte       # /login (401·429 문구 구분)
+├── +error.svelte            # 403(관리자 아님)·404·그 밖 — 전체 화면
+├── login/+page.svelte       # /login (401·429·422·5xx 문구 구분, ?next= 복귀)
 ├── auth/callback/+page.svelte   # /auth/callback (SSO 콜백 — SSO 도입 시 추가, 스캐폴드에는 없음)
-└── (protected)/             # ★ 인증 가드 그룹 (URL 에 영향 없음)
-    ├── +layout.ts           # restoreSession() 대기 → 미인증이면 redirect(302, resolve('login'))
-    ├── +layout.svelte       # 공통 레이아웃 ({@render children()})
-    ├── +page.svelte         # /
-    ├── landing/+page.svelte # /landing
-    └── my/+page.svelte      # /my (signOut)
+├── (site)/                  # 공개 사용자 화면 (URL 에 영향 없음)
+│   ├── +layout.svelte       # 상단 내비 + 계정 메뉴(관리자에게만 "관리자 콘솔") + 푸터
+│   ├── +page.svelte · notices/ · notices/[id]/ · my/(→ /me) · [...rest]/(404)
+│   └── (protected)/         # ★ 로그인 가드 그룹
+│       ├── +layout.ts       # restoreSession() 대기 → 미인증이면 redirect(302, /login?next=…)
+│       └── me/+page.svelte  # /me (signOut)
+└── admin/                   # ★ 관리자 가드
+    ├── +layout.ts           # restoreSession() 대기 → 미인증 → /login?next=…, role≠admin → error(403)
+    ├── +layout.svelte       # 그룹형 사이드바 콘솔
+    └── …                    # 대시보드·notices·banners·users·sessions·login-throttles·system
 ```
 
 `lib/auth/session.ts`:
@@ -801,7 +915,7 @@ export function restoreSession(): Promise<void> {
   return restorePromise
 }
 
-/** 로그아웃 — 서버 세션 폐기(실패해도 진행) → 상태·쿼리 캐시 정리 → 로그인 화면. */
+/** 로그아웃 — 서버 세션 폐기(실패해도 진행) → 상태·쿼리 캐시 정리 → 공개 홈(/). */
 export async function signOut(): Promise<void> {
   try {
     await logout()
@@ -810,29 +924,59 @@ export async function signOut(): Promise<void> {
   }
   authStore.clear()
   queryClient.clear()
-  await goto(resolve("login"), { replaceState: true })
+  await goto(resolve(""), { replace: true })
 }
 ```
 
 ```ts
-// src/routes/(protected)/+layout.ts
-import { redirect } from "@sveltejs/kit"
+// src/routes/admin/+layout.ts — 관리자 가드 (로그인 가드 (site)/(protected)/+layout.ts 는 role 검사만 없다)
+import { error, redirect } from "@sveltejs/kit"
 import { browser } from "$app/env"
 import { resolve } from "$app/paths"
+import { getMe } from "#lib/api/auth.js"
 import { restoreSession } from "#lib/auth/session.js"
+import { queryClient } from "#lib/query-client.js"
+import { loginWithNext } from "#lib/returnTo.js"
 import { authStore } from "#lib/stores/auth.svelte.js"
 
-// 보호 라우트 가드 (ARCHITECTURE.md §14). 미인증 시 로그인 화면으로 보낸다.
-// (protected) 는 라우트 그룹이라 URL 에는 나타나지 않는다 — /, /landing, /my 가 전부 이 가드를 탄다.
-// 레이아웃 load 는 병렬로 돌기 때문에 루트의 복원을 기다린다는 보장이 없다 → 같은 restoreSession()
-// Promise 를 직접 기다린 뒤 메모리 상태로 판단한다(새로고침 시 로그인 화면으로 깜빡 튕기지 않는다).
-// prerender 단계에서는 browser 가 false 라 리다이렉트하지 않고 빈 셸만 만든다.
-export const load = async () => {
+// 레이아웃 load 는 병렬로 돌기 때문에 루트의 복원을 기다린다는 보장이 없다 → 같은 restoreSession() Promise 를 직접 기다린다.
+// prerender 단계에서는 browser 가 false 라 아무것도 하지 않고 빈 셸만 만든다.
+// url 은 미인증일 때만 읽는다 — load 가 url 에 의존하지 않아 콘솔 안 이동마다 다시 돌지 않는다.
+export const load = async ({ url }) => {
   if (!browser) return
   await restoreSession()
-  if (!authStore.isAuthenticated) redirect(302, resolve("login"))
+  if (!authStore.isAuthenticated) redirect(302, loginWithNext(resolve("login"), `${url.pathname}${url.search}`))
+  const user = await queryClient.fetchQuery({ queryKey: ["auth", "me"], queryFn: getMe, staleTime: 30_000 })
+  authStore.setUser(user)
+  if (user.role !== "admin") error(403, "관리자 권한이 필요합니다.")
 }
 ```
+
+### 화면 구성 · 레이아웃 · 관리자 가드
+
+라우트는 `src/routes/` 파일 트리다(위). 사용자 화면은 라우트 그룹 `(site)`, 관리자 콘솔은 `admin/` 이 각자 `+layout.svelte`·`+layout.ts` 를 가진다.
+
+| 경로 | 화면 | 접근 |
+|------|------|------|
+| `/` | 홈 — 배너 캐러셀(`GET /banners`, 없으면 기본 히어로) · 주요 서비스(자리표시) · 최신 공지 5건 · 내 계정 | 공개 |
+| `/notices` · `/notices/[id]` | 공지 목록(고정 우선·제목 검색·페이지, `page`·`q` 는 URL) · 상세(본문 `RichContent`, 첨부 `download_url`, 목록에서 왔으면 그 검색·페이지로 복귀) | 공개 |
+| `/login` | 로그인 — 성공 시 `?next=` 로 복귀 | 공개 |
+| `/me` (`/my` → 리다이렉트) | 내 정보 · 로그아웃 | 로그인 |
+| `/admin` | 대시보드 — KPI(사용자·세션·잠금·공지·배너·DB/Alembic) · 최근 활성 세션 5건(강제 종료) · 잠긴 계정(잠금 해제) | admin |
+| `/admin/notices` · `/new` · `/[id]/edit` | 공지 목록(임시저장 포함) · 작성/수정(`RichTextEditor` + 첨부 패널 — 첫 저장 뒤 수정 URL 로 전환, `page.state.flash` 로 안내) | admin |
+| `/admin/banners` · `/new` · `/[id]/edit` | 배너 목록(활성 토글 = PUT 전체 본문, 위/아래 이동 = `PATCH /order`) · 작성/수정(이미지 업로드·미리보기, 대체 텍스트 필수) | admin |
+| `/admin/users` · `/admin/sessions` · `/admin/login-throttles` | 사용자(검색·역할 필터·권한/활성 변경·세션 모두 종료) · 세션(`?user_id=` 필터·강제 종료) · 로그인 잠금(해제) | admin |
+| `/admin/system` | 헬스 체크(`/health`, `/health/db`) + DB 상태·Alembic 리비전 | admin |
+
+- **사용자 레이아웃 `(site)/+layout.svelte`** (디자인 A — 상단 내비 포털): 로고·홈·공지사항·자리표시 메뉴, 오른쪽은 비로그인 "로그인"(`?next=` 현재 위치) / 로그인 계정 메뉴(`AccountMenu` — 내 정보·로그아웃) + **role=admin 에게만** "관리자 콘솔". 첫 화면 `/` 는 로그인 없이 보인다. 없는 주소는 `(site)/[...rest]` 가 `error(404)` → `(site)/+error.svelte`(레이아웃 안).
+- **관리자 레이아웃 `admin/+layout.svelte`** (디자인 A — 그룹형 사이드바): 메뉴 정의는 `lib/components/layout/adminNav.ts`(개요·콘텐츠·회원·보안·시스템, `resolve()` 에 넘기는 pathname 이라 라우트가 없으면 svelte-check 가 잡는다). 현재 메뉴는 `aria-current="page"` + 강조, "로그인 잠금" 에 잠긴 계정 수 배지(대시보드 집계), 하단 "사용자 화면으로"·현재 사용자. 1024px 미만은 상단 "메뉴" 버튼이 서랍으로 연다. SvelteKit 이 라우트별로 코드를 나누므로 일반 사용자는 에디터·콘솔 코드를 받지 않는다.
+- **관리자 가드** = `admin/+layout.ts` load(위 코드): 비로그인 → `/login?next=…`, `role !== "admin"` → `error(403)` → 루트 `+error.svelte` 의 403 화면 + 홈 링크. 이것은 **화면 노출용 UX 장치**이고 권한 경계는 백엔드 `require_admin`(비로그인 401, 일반 사용자 403)이다.
+- **저장하지 않은 변경**: 공지 작성/수정(`NoticeForm.svelte`)은 `beforeNavigate` 로 앱 안 이동을 취소하고 확인 다이얼로그("저장하지 않고 나갈까요?")를 띄운 뒤 확인하면 그 주소로 `goto` 한다. 새로고침·탭 닫기·외부 이동(`type === "leave"`)은 `beforeunload` 리스너가 브라우저 확인을 띄운다.
+- **서버 상태 규칙**: 조회는 svelte-query 팩토리(`lib/queries/notices·banners·admin`), 변경은 `createMutation` 후 관련 키(`["notices"]`·`["banners"]`·`["admin", …]`)와 대시보드를 무효화한다. 낙관적 갱신은 배너 활성 토글처럼 되돌리기 쉬운 곳에만 쓴다. 파괴적 작업(삭제·강제 종료·비활성화·권한 변경)은 `ConfirmDialog` 로 확인한다.
+- **오류 문구**: `lib/apiError.ts` 가 도메인 `code`(`self_modification`·`last_admin`·`too_many_attachments`·`unsupported_file_type`…)·413·422 를 한국어로 바꾼다. 업로드 전 사전 검사(`lib/uploadRules.ts`·`editorImageProblem`·`lib/linkUrl.ts`)는 백엔드 허용 목록·규칙과 같은 값이다 — 백엔드 설정을 바꾸면 함께 고친다.
+- **업로드**: 모든 업로드는 공용 axios 인스턴스로 `FormData` 필드 `file`(Bearer 주입·401 refresh 재시도 그대로). 첨부는 여러 개를 고르면 하나씩 순서대로 올리며 파일별 진행률·오류를 보여 준다. 관리자 첨부 다운로드는 Bearer 가 필요해 blob 으로 받아 원래 파일명(`original_name`)으로 저장한다(`lib/download.ts`). 공개 첨부는 `download_url` 링크.
+- **리치 에디터**(`lib/components/editor/`): contentEditable + `document.execCommand`, 라이브러리 없음. `execCommand` 호출은 `editorDom.ts` 의 `exec()` 한 곳에만 있고, 프로그램적 변경(크기·alt·교체·삽입·삭제)은 대상 노드를 `Range.selectNode` 한 뒤 `exec("insertHTML")`/`exec("delete")` 로 커밋한다(브라우저 undo 스택). 비제어 컴포넌트라 `initialHtml` 은 마운트 때 한 번만 쓰고 대상이 바뀌면 `{#key}` 로 다시 만든다. 다이얼로그는 `document.body` 로 옮겨 그린다(폼 중첩 방지). 보기는 `RichContent.svelte` 의 `{@html}` 한 곳 — ⛔ 서버가 정화한 HTML 만 넣는다.
+- **시각**: 서버 값은 KST naive 문자열이다. `lib/format.ts` 는 `Date` 로 재해석하지 않고 문자열로 자른다(브라우저 시각대가 달라도 밀리지 않는다). 배너 기간 입력은 `datetime-local` → `YYYY-MM-DDTHH:mm:00`.
 
 ---
 
@@ -888,6 +1032,9 @@ export const load = async () => {
 | `COOKIE_SECURE` | refresh 쿠키의 `Secure` 속성. cookie 방식 + `APP_ENV=production` 이면 `true` 필수(아니면 기동 거부) |
 | `CORS_ORIGINS` | 콤마 구분 허용 출처 |
 | `FRONTEND_URL`, `BACKEND_PUBLIC_URL` | 리다이렉트/콜백 |
+| `UPLOAD_DIR` | 업로드 저장 위치(기본 `uploads` → `backend/uploads/`, 상대 경로는 backend 기준). `public/` 만 `/uploads/public` 으로 정적 서빙 (§8) |
+| `PUBLIC_FILES_BASE_URL` | 공개 파일·첨부 다운로드 URL 접두사. 비우면 루트 상대 경로(같은 오리진 또는 `/uploads` 프록시), 다른 오리진·BFF 면 백엔드 공개 주소 (§8) |
+| `MAX_IMAGE_UPLOAD_MB`, `MAX_ATTACHMENT_UPLOAD_MB` | 업로드 크기 상한(MB, 기본 5 / 20) — 초과 시 413 |
 | `APP_ENV` | `production` 이면 안전하지 않은 기본값(기본 `SECRET_KEY`, 관리자 시드)으로 기동을 거부한다 |
 | `SEED_DEFAULT_ADMIN`, `DEFAULT_ADMIN_PASSWORD` | 기동 시 기본 관리자(admin) 시드 여부·초기 비밀번호. **코드 기본값은 꺼짐** — `.env` 에서만 켠다(§21) |
 | `OAUTH_*` | SSO 도입 시(authorize/token/userinfo URL, client id/secret, redirect uri) |
@@ -896,7 +1043,7 @@ export const load = async () => {
 ### 프론트엔드 (`.env`, `VITE_` 필수)
 | 키 | 용도 |
 |----|------|
-| `VITE_API_BASE_URL` | API 호스트 (없으면 dev proxy `/api/v1` — 같은 오리진). 지정하면 쿠키를 `withCredentials` 로 보내므로 백엔드 `CORS_ORIGINS` 에 프론트 오리진을 넣고, 프론트·API 를 같은 사이트에 둔다(§14) |
+| `VITE_API_BASE_URL` | API 호스트 (없으면 dev proxy `/api/v1` — 같은 오리진). 루트 상대 업로드 URL(`/uploads/...`)에도 이 오리진을 붙인다(`resolveUploadUrl`). 지정하면 쿠키를 `withCredentials` 로 보내므로 백엔드 `CORS_ORIGINS` 에 프론트 오리진을 넣고, 프론트·API 를 같은 사이트에 둔다(§14) |
 | `VITE_BACKEND_URL` | SSO 리다이렉트용 백엔드 호스트 |
 
 - `.env`는 커밋 금지. `.env.example`에 **키만** 공유.
@@ -1008,7 +1155,7 @@ gh pr merge --squash --delete-branch
 - [ ] `pytest` + SQLite in-memory + `conftest.py` 픽스처 (§12)
 - [ ] 프론트 `src/` 골격(§13): axios `lib/api/client.ts`, `lib/stores/auth.svelte.ts`, `+layout.svelte`의 QueryClientProvider
 - [ ] SPA 고정: `vite.config.ts` 의 `sveltekit({ adapter: adapter-static })` + 루트 `+layout.ts`의 `ssr = false` (§2, §13)
-- [ ] 인증 흐름(§14): 메모리 access 토큰 + httpOnly refresh 쿠키(`REFRESH_TOKEN_TRANSPORT=cookie`), 앱 시작 `restoreSession()`, 401 → single-flight refresh·1회 재시도, `(protected)/+layout.ts` 가드 — 자체 계정 기본, SSO는 도입 시 콜백 추가
+- [ ] 인증 흐름(§14): 메모리 access 토큰 + httpOnly refresh 쿠키(`REFRESH_TOKEN_TRANSPORT=cookie`), 앱 시작 `restoreSession()`, 401 → single-flight refresh·1회 재시도, `(site)/(protected)`·`admin/` `+layout.ts` 가드 — 자체 계정 기본, SSO는 도입 시 콜백 추가
 - [ ] Tailwind v4 `@theme`, pnpm, ESLint (§15, §2)
 - [ ] `.github/workflows/ci.yml` 동작 확인 — push 이후 도는 **사후 안전망**이다. push 전 로컬 검증이 유일한 게이트 (§20)
 - [ ] (협업자가 생기면) `.github/pull_request_template.md` 활용, `main` 보호 + CI 필수 검사 설정 (§20)
