@@ -3,7 +3,7 @@
   import type { Snippet } from "svelte"
   import "../app.css"
 
-  // 부트스트랩 (architecture.md §13): svelte-query Provider 를 최상위에 한 번만 둔다.
+  // 부트스트랩 (ARCHITECTURE.md §13): svelte-query Provider 를 최상위에 한 번만 둔다.
   const { children }: { children: Snippet } = $props()
 
   const queryClient = new QueryClient()

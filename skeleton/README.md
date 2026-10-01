@@ -1,7 +1,7 @@
 # __PROJECT_NAME__
 
 공통 아키텍처(FastAPI · SvelteKit · PostgreSQL) 기반 프로젝트.
-상세 기준은 [`docs/architecture.md`](docs/architecture.md), 작업 순서는 [`plan.md`](plan.md).
+상세 기준은 [`ARCHITECTURE.md`](ARCHITECTURE.md), 작업 순서는 [`PLAN.md`](PLAN.md), 디자인 토큰은 [`DESIGN.md`](DESIGN.md), AI 에이전트 지침은 [`AGENTS.md`](AGENTS.md), 프로젝트 고유 문서(PRD 등)는 [`docs/`](docs/README.md).
 
 ## 기술 스택 (주요 버전, 2026-08-11 기준)
 
@@ -101,7 +101,7 @@ pnpm dev
 - `users` 테이블은 `role`(일반 `user` / 관리자 `admin`)로 권한을 구분한다. 관리자 전용 API 는 `require_admin` 의존성으로 보호한다.
 - ⚠️ 운영 배포 시 기본 관리자 비밀번호를 **즉시 변경**하라.
 
-## DB 스키마 변경 (architecture.md §11)
+## DB 스키마 변경 (ARCHITECTURE.md §11)
 
 ```powershell
 cd backend
@@ -119,7 +119,8 @@ cd ..\frontend; pnpm lint                     # 프론트 린트 (eslint)
 pnpm check                                     # 프론트 타입 체크 (svelte-check)
 ```
 
-## CI (architecture.md §20)
+## CI (ARCHITECTURE.md §20)
 
 `.github/workflows/ci.yml` 이 push/PR(main) 마다 자동 실행한다 — 백엔드(ruff + pytest) / 프론트(eslint + svelte-check + build).
-GitHub 저장소에서 **main 브랜치 보호 + CI 통과를 머지 게이트**로 설정해 사용한다.
+CI는 push 이후 도는 **사후 안전망**이다. ⛔ 게이트는 push 전 로컬 검증(위 명령)이며, `main` 직접 커밋이 기본이고 브랜치·PR은 선택이다.
+협업자가 생기면 `main` 브랜치 보호와 CI 필수 검사를 켜고 PR 흐름을 기본으로 되돌린다.

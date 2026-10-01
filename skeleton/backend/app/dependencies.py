@@ -1,4 +1,4 @@
-"""FastAPI 공통 의존성 (architecture.md §6) — 단일 파일."""
+"""FastAPI 공통 의존성 (ARCHITECTURE.md §6) — 단일 파일."""
 from collections.abc import Generator
 
 from fastapi import Depends, HTTPException, status
@@ -30,7 +30,7 @@ def get_current_subject(
     creds: HTTPAuthorizationCredentials | None = Depends(_bearer),
     settings: Settings = Depends(get_settings_dep),
 ) -> str:
-    """Bearer JWT 를 검증하고 subject(sub)를 반환한다 (architecture.md §9).
+    """Bearer JWT 를 검증하고 subject(sub)를 반환한다 (ARCHITECTURE.md §9).
 
     실제 사용자 조회는 services 계층을 통해 구현한다.
     """
@@ -51,7 +51,7 @@ def get_current_user(
     subject: str = Depends(get_current_subject),
     db: Session = Depends(get_db),
 ) -> User:
-    """JWT subject(=user id)로 현재 사용자를 조회한다 (architecture.md §6, §9)."""
+    """JWT subject(=user id)로 현재 사용자를 조회한다 (ARCHITECTURE.md §6, §9)."""
     cred_error = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="인증이 필요합니다.",

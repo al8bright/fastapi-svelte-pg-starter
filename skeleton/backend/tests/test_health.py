@@ -1,4 +1,4 @@
-"""헬스 체크 테스트 (architecture.md §12, §18 TDD)."""
+"""헬스 체크 테스트 (ARCHITECTURE.md §12, §18 TDD)."""
 
 
 def test_health_ok(client):

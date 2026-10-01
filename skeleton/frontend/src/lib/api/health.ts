@@ -1,6 +1,6 @@
 import { api } from "$lib/api/client"
 
-// 도메인별 API 함수 (architecture.md §13).
+// 도메인별 API 함수 (ARCHITECTURE.md §13).
 export interface DbHealth {
   db: string
   table: string

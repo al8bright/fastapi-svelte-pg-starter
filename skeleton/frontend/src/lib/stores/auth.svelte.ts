@@ -1,7 +1,7 @@
 import type { User } from "$lib/api/auth"
 import { clearToken, getToken, setToken } from "$lib/auth/token"
 
-// 클라이언트 전역 상태 (architecture.md §13).
+// 클라이언트 전역 상태 (ARCHITECTURE.md §13).
 // zustand 같은 별도 라이브러리 없이 Svelte 5 runes($state)로 대체한다 — 그래서 파일명이 .svelte.ts 다.
 class AuthStore {
   token = $state<string | null>(getToken())

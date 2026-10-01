@@ -7,15 +7,17 @@
 _project-template/
 ├── scaffold.ps1            # ★ Windows (PowerShell) 스캐폴드
 ├── scaffold.sh             # ★ macOS / Linux (bash) 스캐폴드 — 동작 동일
-├── DESIGN.md               # 디자인 토큰(색상/타이포) — 선택적으로 테마에 반영
 ├── README.md               # (이 파일)
 └── skeleton/               # 새 프로젝트가 받는 골격 전체
-    ├── CLAUDE.md           # 프로젝트 Claude 지침
-    ├── plan.md             # TDD 작업 계획
-    ├── README.md
+    ├── README.md           # 사람용 개요·실행 방법
+    ├── AGENTS.md           # AI 에이전트 공통 지침 (Codex·Cursor 등 공용)
+    ├── CLAUDE.md           # Claude Code 진입점 — @AGENTS.md import
+    ├── ARCHITECTURE.md     # 공통 아키텍처 가이드 (상세 기준)
+    ├── DESIGN.md           # 디자인 토큰(색상/타이포) — 항상 포함, 테마 주입은 선택
+    ├── PLAN.md             # TDD 작업 계획
+    ├── docs/               # 프로젝트 고유 문서 (PRD·유저 플로우·기획서 등)
     ├── .gitignore / .gitattributes
     ├── .github/pull_request_template.md
-    ├── docs/architecture.md   # 공통 아키텍처 가이드 (상세 기준)
     ├── backend/            # FastAPI + SQLAlchemy + Alembic + pytest
     └── frontend/           # SvelteKit(SPA) + Svelte 5 + TS + Tailwind v4 + axios/svelte-query/runes
 ```
@@ -136,12 +138,12 @@ flowchart LR
 ```
 
 > 계층 규칙: 라우터는 HTTP 만 얇게, 도메인 로직은 `services/`, 검증은 `schemas/`.
-> 프론트는 서버 상태를 `lib/queries/` 로만 다루고 직접 패칭하지 않는다. 상세는 [`skeleton/docs/architecture.md`](skeleton/docs/architecture.md).
+> 프론트는 서버 상태를 `lib/queries/` 로만 다루고 직접 패칭하지 않는다. 상세는 [`skeleton/ARCHITECTURE.md`](skeleton/ARCHITECTURE.md).
 
 ## 사용법 — OS별 스크립트
 
 > 이 템플릿 폴더는 자신의 OS·작업 폴더로 복사해서 쓴다.
-> 두 스크립트는 같은 `skeleton/`·`DESIGN.md` 를 사용하므로 어느 OS에서 만들어도 결과가 동일하다.
+> 두 스크립트는 같은 `skeleton/` 을 사용하므로 어느 OS에서 만들어도 결과가 동일하다.
 
 > **생성 위치(`-Target`/`--target`)를 지정하지 않으면** `_project-template` 의 **부모 폴더에 프로젝트명으로** 생성된다.
 > 예: `project/_project-template/` 에서 실행하면 → `project/<프로젝트명>/` 에 생성. (대화형일 땐 기본값을 보여주고 Enter 로 수락)
@@ -185,7 +187,7 @@ chmod +x scaffold.sh          # 최초 1회 (실행 권한이 없을 때)
 
 1. **런타임 사전 검사** → 하한 미달이면 bootstrap 실행 후 재검증, 실패하면 골격 복사 전에 중단
 2. 이름/위치 입력 → `PascalCase`를 `snake_case`(DB명·토큰키)로 변환
-3. **DESIGN.md 적용 여부 질문** → 적용 시 `colors`/`typography`를 Tailwind `@theme`로 변환해 `frontend/src/app.css`에 주입(+`docs/DESIGN.md` 복사)
+3. **DESIGN.md 적용 여부 질문** → 적용 시 `colors`/`typography`를 Tailwind `@theme`로 변환해 `frontend/src/app.css`에 주입(`DESIGN.md` 는 적용 여부와 무관하게 항상 포함)
 4. `skeleton/` 복사 + 토큰 치환(`__PROJECT_NAME__`, `__PROJECT_SNAKE__`, 테마) + 런타임 핀 파일 이관
 5. **PostgreSQL 접속정보(host/port/user/password/db) 질문** → `backend/.env`·`frontend/.env` 생성(`DATABASE_URL`·`SECRET_KEY` 주입)
 6. 백엔드: `python -m venv .venv` + `pip install -r requirements.txt`
@@ -212,16 +214,16 @@ chmod +x scaffold.sh          # 최초 1회 (실행 권한이 없을 때)
 
 1. 스크립트가 출력한 대로 백엔드(`uvicorn`)·프론트(`pnpm dev`)를 실행
 2. 브라우저 http://localhost:5173 → 랜딩 페이지에서 **백엔드·DB 연결 상태**가 "정상"이면 성공
-3. Claude 에게: "`docs/architecture.md` 와 `plan.md` 따라 개발 시작" → TDD(Red→Green→Refactor)
+3. AI 에이전트에게: "`AGENTS.md`·`ARCHITECTURE.md`·`PLAN.md` 따라 개발 시작" → TDD(Red→Green→Refactor)
 
 ## 기준이 바뀌면
 
-- **원본만 수정**: `skeleton/docs/architecture.md`(+ 필요 시 `skeleton/CLAUDE.md`).
-- `architecture.md` 상단의 **★ 핵심 MUST 요약**이 항상 최신 고정 규칙을 반영하도록 유지한다.
+- **원본만 수정**: `skeleton/ARCHITECTURE.md`(+ 필요 시 `skeleton/AGENTS.md`).
+- `ARCHITECTURE.md` 상단의 **★ 핵심 MUST 요약**이 항상 최신 고정 규칙을 반영하도록 유지한다.
 - 진행 중인 프로젝트는 필요할 때 변경분을 동기화한다.
 
-> 전역 규칙(TDD / Tidy First / 커밋 형식 / PowerShell / pnpm / 한국어)은
-> `~/.claude/CLAUDE.md`에 있으므로 프로젝트 `CLAUDE.md`에서 반복하지 않는다.
+> 작업 규칙(TDD / Tidy First / 커밋 형식 / PowerShell / pnpm / 한국어)은 `skeleton/AGENTS.md`에 직접 담는다 —
+> 전역 설정(`~/.claude/CLAUDE.md` 등) 없이도 어떤 에이전트든 같은 규칙을 따르게 하기 위해서다.
 
 ## 검증 상태
 
@@ -236,7 +238,7 @@ chmod +x scaffold.sh          # 최초 1회 (실행 권한이 없을 때)
 - 토큰 치환: `app.html` `<title>`, `package.json` `name`, `token.ts` `TOKEN_KEY`,
   `main.py` FastAPI `title`, `backend/.env`·`frontend/.env` 생성 모두 정상
 - 테마: `--no-design` 은 기본 `@theme`, `--design` 은 DESIGN.md 의 색상(`--color-primary: #00478d` 등)이
-  `frontend/src/app.css` 에 주입되고 `docs/DESIGN.md` 가 복사됨
+  `frontend/src/app.css` 에 주입됨 (`DESIGN.md` 는 두 경우 모두 포함)
 - 백엔드: `pip install -r requirements.txt` + `ruff check .` (통과) + `pytest -q` (7건 통과).
   `.env` 의 `DATABASE_URL` 이 PostgreSQL 을 가리켜도 테스트는 SQLite in-memory 픽스처를 쓰므로 영향 없음 (§12)
 - Alembic: SQLite 기준 `upgrade head` / `downgrade base` (0001_initial → 0002_users, `app_meta`·`users` 테이블)
@@ -257,7 +259,7 @@ chmod +x scaffold.sh          # 최초 1회 (실행 권한이 없을 때)
 - PostgreSQL 경로: `--skip-db` 로 검증했으므로 `psql` DB 생성 + PostgreSQL 상대 `alembic upgrade head` 는
   확인하지 못했다. 마이그레이션은 SQLite 로만 검증했다.
 - `scaffold.ps1`(Windows/PowerShell): 실행 환경이 없어 검증하지 못했다. bash 판과 동일한
-  `skeleton/`·`DESIGN.md` 를 사용하지만 결과 동일성은 확인되지 않았다.
+  `skeleton/` 을 사용하지만 결과 동일성은 확인되지 않았다.
 - 스캐폴드의 자동 설치 단계(`--skip-install` 없이 실행)는 거치지 않았다. pip/pnpm 설치는 수동으로 확인했다.
 
 버전은 caret 범위이므로 필요 시 `pnpm up` / `pip` 로 갱신 가능하다.

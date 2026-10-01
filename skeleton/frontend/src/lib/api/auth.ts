@@ -1,6 +1,6 @@
 import { api } from "$lib/api/client"
 
-// 인증 API (architecture.md §13, §14).
+// 인증 API (ARCHITECTURE.md §13, §14).
 export type UserRole = "user" | "admin"
 
 export interface User {

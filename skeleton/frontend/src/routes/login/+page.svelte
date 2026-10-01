@@ -4,7 +4,7 @@
   import { createLogin } from "$lib/queries/auth"
   import { authStore } from "$lib/stores/auth.svelte"
 
-  // 로그인 화면 (architecture.md §14). 성공 시 메인(/)으로 이동.
+  // 로그인 화면 (ARCHITECTURE.md §14). 성공 시 메인(/)으로 이동.
   const loginMutation = createLogin()
 
   let username = $state("")

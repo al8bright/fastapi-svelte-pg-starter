@@ -96,7 +96,7 @@ description: __PROJECT_NAME__ 의 고정 스택 버전과 버전별 주의사항
 - **CI**(`.github/workflows/ci.yml`)가 push·PR(main) 마다 backend(ruff+pytest) / frontend(**eslint + svelte-check + build**) 를 실행. 워크플로는 생성 프로젝트(루트)에서만 동작한다.
 
 ## 4. 백엔드 핀 정책
-- `requirements.txt` 는 **`==` 정확 핀, 재현성 우선**(architecture.md §2).
+- `requirements.txt` 는 **`==` 정확 핀, 재현성 우선**(ARCHITECTURE.md §2).
 - 런타임 최소를 올린다고(예: 3.13) 핀을 자동으로 올리지 말 것 — **호환되면 유지**(현재 핀은 3.13 호환 확인됨).
 - 핀 상향은 보안/기능 목적의 **의식적 결정**으로. FastAPI 는 "최신이 아닌 안정화된 마이너" 선호.
 
@@ -105,4 +105,4 @@ description: __PROJECT_NAME__ 의 고정 스택 버전과 버전별 주의사항
 1. `scaffold.ps1 -Name tmp -Target <스크래치경로> -SkipDb -SkipInstall -NoDesign`
 2. 백엔드: `python -m venv .venv` → `pip install -r requirements.txt` → `ruff check .` → `pytest -q`
 3. 프론트: `pnpm install` → `pnpm lint` → `pnpm check`(svelte-check) → `pnpm build`
-4. 통과 시 핀 고정 후 **갱신할 곳을 모두**: SoT 파일 + `README.md` 표(+기준일) + 필요 시 `docs/architecture.md` + **이 스킬의 스냅샷/주의(§2·§3)**. 커밋/PR은 [pr-workflow].
+4. 통과 시 핀 고정 후 **갱신할 곳을 모두**: SoT 파일 + `README.md` 표(+기준일) + 필요 시 `ARCHITECTURE.md` + **이 스킬의 스냅샷/주의(§2·§3)**. 커밋/PR은 [pr-workflow].

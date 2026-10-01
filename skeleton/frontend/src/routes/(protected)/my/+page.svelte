@@ -4,7 +4,7 @@
   import { createMe } from "$lib/queries/auth"
   import { authStore } from "$lib/stores/auth.svelte"
 
-  // My 화면 (architecture.md §14). 로그인 사용자 정보 + 로그아웃.
+  // My 화면 (ARCHITECTURE.md §14). 로그인 사용자 정보 + 로그아웃.
   const me = createMe()
 
   const onLogout = () => {

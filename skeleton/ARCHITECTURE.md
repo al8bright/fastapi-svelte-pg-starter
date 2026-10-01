@@ -8,7 +8,7 @@
 
 ## ★ 핵심 MUST 요약 (반드시 고정)
 
-> 아래 항목은 **프로젝트마다 바뀌지 않는 고정 규칙**이다. 어기려면 `docs/architecture.md`에 사유를 남기되, ⛔ 표시 항목은 예외 없이 금지한다.
+> 아래 항목은 **프로젝트마다 바뀌지 않는 고정 규칙**이다. 어기려면 `ARCHITECTURE.md`에 사유를 남기되, ⛔ 표시 항목은 예외 없이 금지한다.
 > 세부 내용은 각 섹션(§) 참조.
 
 | # | 고정 규칙 (MUST) | § |
@@ -27,16 +27,16 @@
 | 12 | **테스트는 pytest + SQLite in-memory** — `get_settings.cache_clear()` autouse, `dependency_overrides`로 격리 | §12 |
 | 13 | **TDD + Tidy First** — Red→Green→Refactor, 구조 변경과 동작 변경을 한 커밋에 섞지 않음 | §18 |
 | 14 | **커밋 메시지**: `[Structural]`/`[Behavioral]` + conventional type, 테스트·린트 통과 시에만 | §19 |
-| 15 | **변경은 브랜치→PR→CI 통과→머지** — ⛔ `main` 직접 푸시 금지, 1 PR은 Structural·Behavioral 중 하나만 | §20 |
+| 15 | **push 전 로컬 테스트·린트 통과가 유일한 게이트** — `main` 직접 커밋이 기본(브랜치·PR은 선택), 1 커밋은 Structural·Behavioral 중 하나만 | §20 |
 
 ---
 
 ## 0. 적용 범위 & 우선순위
 
 - **MUST**: 신규 프로젝트는 반드시 따른다.
-- **SHOULD**: 특별한 사유가 없으면 따른다. 벗어나면 `docs/architecture.md`에 사유를 남긴다.
+- **SHOULD**: 특별한 사유가 없으면 따른다. 벗어나면 `ARCHITECTURE.md`에 사유를 남긴다.
 - **MAY**: 프로젝트 성격에 따라 선택한다.
-- 본 가이드와 개별 프로젝트 문서가 충돌하면 **본 가이드 우선**. 예외는 프로젝트 `docs/architecture.md`에 명시한다.
+- 본 가이드와 개별 프로젝트 문서가 충돌하면 **본 가이드 우선**. 예외는 프로젝트 `ARCHITECTURE.md`에 명시한다.
 
 ---
 
@@ -89,7 +89,7 @@
 
 > 프론트 표준 스택은 **axios + @tanstack/svelte-query + Svelte 5 runes**로 통일한다.
 > 매우 단순한 화면만 있는 소규모 도구는 `fetch + runes($state)`만으로 처리하는 것을 MAY로 허용하되,
-> 그 사유를 `docs/architecture.md`에 남긴다.
+> 그 사유를 `ARCHITECTURE.md`에 남긴다.
 
 ---
 
@@ -109,15 +109,18 @@
 │   ├── package.json
 │   ├── svelte.config.js
 │   └── vite.config.ts
-├── docs/
-│   ├── architecture.md          # 본 가이드에서 벗어난 결정/사유 기록
-│   └── <연동>-가이드.md          # 선택 (SSO 등 외부 연동)
-├── plan.md                      # TDD 작업 순서 (필수)
+├── docs/                        # 프로젝트 고유 문서 (PRD·유저 플로우·기획서·<연동>-가이드 등)
+│   └── README.md
+├── AGENTS.md                    # AI 에이전트 공통 지침 (CLAUDE.md 가 @import)
+├── CLAUDE.md                    # Claude Code 진입점
+├── ARCHITECTURE.md              # 본 가이드 — 벗어난 결정/사유도 여기 기록
+├── DESIGN.md                    # 디자인 토큰(색상/타이포그래피) — 테마(@theme)의 원본
+├── PLAN.md                      # TDD 작업 순서 (필수)
 ├── .env.example
 └── README.md
 ```
 
-- 루트에 `plan.md`를 두고 **TDD 작업 순서**(실패 테스트 단위)를 관리한다.
+- 루트에 `PLAN.md`를 두고 **TDD 작업 순서**(실패 테스트 단위)를 관리한다.
 - 환경값은 `.env.example`로 키만 공유하고 실제 `.env`는 커밋하지 않는다.
 
 ---
@@ -499,7 +502,7 @@ api.interceptors.response.use(
 import type { User } from "$lib/api/auth"
 import { clearToken, getToken, setToken } from "$lib/auth/token"
 
-// 클라이언트 전역 상태 (architecture.md §13).
+// 클라이언트 전역 상태 (ARCHITECTURE.md §13).
 // runes 를 쓰는 TS 모듈이므로 파일 확장자는 반드시 `.svelte.ts`.
 class AuthStore {
   token = $state<string | null>(getToken())
@@ -534,7 +537,7 @@ export const authStore = new AuthStore()
 import { createQuery } from "@tanstack/svelte-query"
 import { getDbHealth, getHealth } from "$lib/api/health"
 
-// svelte-query 쿼리 (architecture.md §13).
+// svelte-query 쿼리 (ARCHITECTURE.md §13).
 export function createHealth() {
   return createQuery(() => ({ queryKey: ["health"], queryFn: getHealth, retry: false }))
 }
@@ -695,7 +698,7 @@ export const load = () => {
 
 ## 18. 개발 원칙 (TDD · Tidy First)
 
-- **TDD 사이클**: Red → Green → Refactor. `plan.md` 순서대로 **한 번에 실패하는 테스트 하나**.
+- **TDD 사이클**: Red → Green → Refactor. `PLAN.md` 순서대로 **한 번에 실패하는 테스트 하나**.
   결함도 API 레벨 실패 테스트부터 작성한다.
 - **최소 구현**으로 Green을 만들고, **Refactor는 Green 상태에서만**.
 - **Tidy First**: **구조 변경(Structural)과 동작 변경(Behavioral)을 분리**한다. 한 커밋에 섞지 않는다.
@@ -716,27 +719,16 @@ export const load = () => {
 
 ---
 
-## 20. 브랜치 · PR 규칙 (GitHub)
+## 20. 변경 반영 규칙 (GitHub)
 
-> 변경은 **브랜치 → PR → CI 통과 → 머지** 흐름으로 반영한다. `main` 직접 푸시는 금지.
-> 커밋의 Structural/Behavioral 분리 원칙(§18, §19)을 **PR 단위에서도 그대로** 지킨다.
+> 기본 흐름은 **`main`에서 작업 → 로컬 검증 → 커밋 → push** 다. 브랜치와 PR은 **선택**이다.
+> 커밋의 Structural/Behavioral 분리 원칙(§18, §19)은 그대로 지킨다.
 
-### 브랜치 명명
-- `feat/<요약>`, `fix/<요약>`, `refactor/<요약>`, `docs/<요약>` (kebab-case)
-- 예: `feat/order-create`, `refactor/move-deps`
+### ⛔ push 전 로컬 검증이 유일한 게이트다
 
-### PR 작성
-- **제목**: 커밋과 동일 형식 `[Category] <type>: <요약>`.
-- **하나의 PR은 Structural·Behavioral 중 하나만** 담는다(섞지 않는다).
-- **작게 유지**: 리뷰 가능한 크기로 쪼갠다.
-- **본문 템플릿** (`.github/pull_request_template.md`로 저장소에 둔다):
-  ```markdown
-  ## 요약
-  <무엇을 왜 바꿨는지 1~3줄>
+PR 리뷰 단계가 없으므로 **커밋·push 전 검증을 건너뛰면 깨진 코드가 곧바로 `main`에 남는다.** CI는 push 이후에 도는 **사후 안전망**이지 사전 게이트가 아니다.
 
-  ## 변경 유형
-  - [ ] Structural (구조 변경, 동작 불변)
-  - [ ] Behavioral (기능·버그·로직 변경)
+push 전에 반드시 통과시킨다:
 
   ## 테스트
   - 추가/수정한 테스트와 결과 (pytest, 프론트 등)
@@ -748,26 +740,62 @@ export const load = () => {
   - [ ] 설정 변경 시 `.env.example` 갱신 (§5, §17)
   ```
 
-### 머지 규칙
-- **CI(테스트·린트) 통과**를 머지 게이트로 한다. ⛔ 실패 상태 머지 금지.
-- 셀프 머지는 허용하되, 머지 전 **본인 diff 셀프 리뷰**를 거친다(팀 협업 시 리뷰어 지정).
-- 머지 후 브랜치는 삭제한다.
+### 커밋 단위
+- **하나의 커밋은 Structural·Behavioral 중 하나만** 담는다(§18 Tidy First). 브랜치가 없어도 이 분리는 유지한다.
+- **작게 유지**: 한 커밋은 한 가지 목적. 나중에 되돌릴 수 있는 크기로.
+- 형식은 §19를 따른다.
 
-### gh CLI 예시 (PowerShell)
+### 브랜치·PR을 쓰는 경우 (선택)
+다음이면 브랜치를 따고 PR을 만든다. 그 외에는 `main` 직접 커밋으로 충분하다.
+- 되돌리기 어렵거나 광범위한 변경 — 마이그레이션이 얽힌 리팩터링, 의존성 대량 상향
+- 여러 커밋에 걸쳐 진행 중이라 중간 상태를 `main`에 두고 싶지 않을 때
+- 리뷰를 받고 싶을 때(협업자가 있거나 스스로 diff를 정리해 보고 싶을 때)
+
+브랜치 명명은 `feat/<요약>`, `fix/<요약>`, `refactor/<요약>`, `docs/<요약>` (kebab-case).
+PR 제목은 커밋과 동일 형식이고, **하나의 PR도 Structural·Behavioral 중 하나만** 담는다.
+본문 템플릿은 `.github/pull_request_template.md`에 둔다:
+
+```markdown
+## 요약
+<무엇을 왜 바꿨는지 1~3줄>
+
+## 변경 유형
+- [ ] Structural (구조 변경, 동작 불변)
+- [ ] Behavioral (기능·버그·로직 변경)
+
+## 테스트
+- 추가/수정한 테스트와 결과 (pytest, 프론트 등)
+
+## 체크리스트
+- [ ] 모든 테스트 통과 + 린트 경고 0
+- [ ] Structural/Behavioral 를 섞지 않음
+- [ ] DB 변경 시 Alembic 마이그레이션 포함 (§11)
+- [ ] 설정 변경 시 `.env.example` 갱신 (§5, §17)
+```
+
+### 예시 (PowerShell)
 ```powershell
+# 기본 — main 직접 커밋
+git pull --ff-only
+# ... 작업 + 로컬 검증 ...
+git add <파일>
+git commit -m "[Behavioral] feat: 주문 생성 API 추가"
+git push
+
+# 선택 — 브랜치·PR (위 조건에 해당할 때만)
 git switch -c feat/order-create
-# ... 작업 + 커밋 ...
 git push -u origin feat/order-create
 gh pr create --fill --base main
-gh pr view --web        # 상태/CI 확인
 gh pr merge --squash --delete-branch
 ```
+
+> **협업자가 생기면** `main` 브랜치 보호와 필수 CI 검사를 켜고 PR 흐름을 기본으로 되돌리는 것을 권장한다. 위 규칙은 단독 개발을 전제로 한다.
 
 ---
 
 ## 21. 신규 프로젝트 부트스트랩 체크리스트
 
-- [ ] 저장소 구조(§3) 생성, `plan.md` / `.env.example` / `docs/architecture.md` / `.gitignore`(`.env` 제외) 작성
+- [ ] 저장소 구조(§3) 생성, `PLAN.md` / `.env.example` / `ARCHITECTURE.md` / `.gitignore`(`.env` 제외) 작성
 - [ ] 백엔드 `app/` 골격(§4): `main.py`, `config.py`, `dependencies.py`, `db/`, `core/security.py`
 - [ ] `Settings` + `get_settings()` (§5) — **모든 설정은 `.env`로 주입, OS 독립 (MUST §5)**, CORS, `TZ=Asia/Seoul`
 - [ ] PostgreSQL `connect_args` KST 고정 (§7, §10)
@@ -777,5 +805,6 @@ gh pr merge --squash --delete-branch
 - [ ] SPA 고정: `svelte.config.js` adapter-static + 루트 `+layout.ts`의 `ssr = false` (§2, §13)
 - [ ] `(protected)/+layout.ts` 가드 + SSO 로그인/콜백 흐름 (§14)
 - [ ] Tailwind v4 `@theme`, pnpm, ESLint (§15, §2)
-- [ ] `.github/pull_request_template.md` 추가, `main` 보호 + CI 머지 게이트 (§20)
+- [ ] `.github/workflows/ci.yml` 동작 확인 — push 이후 도는 **사후 안전망**이다. push 전 로컬 검증이 유일한 게이트 (§20)
+- [ ] (협업자가 생기면) `.github/pull_request_template.md` 활용, `main` 보호 + CI 필수 검사 설정 (§20)
 - [ ] 첫 실패 테스트 작성(TDD Red) → 구현(Green) (§18)

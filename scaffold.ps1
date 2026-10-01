@@ -1,7 +1,7 @@
 ﻿#requires -Version 5.1
 <#
 .SYNOPSIS
-  공통 아키텍처 기반 신규 프로젝트 스캐폴드 (architecture.md 준수).
+  공통 아키텍처 기반 신규 프로젝트 스캐폴드 (ARCHITECTURE.md 준수).
 
 .DESCRIPTION
   skeleton/ 골격을 복사하고 토큰을 치환한 뒤,
@@ -35,7 +35,7 @@ $ErrorActionPreference = "Stop"
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $TemplateDir = $PSScriptRoot
 $SkeletonDir = Join-Path $TemplateDir "skeleton"
-$DesignFile  = Join-Path $TemplateDir "DESIGN.md"
+$DesignFile  = Join-Path $SkeletonDir "DESIGN.md"
 $Enc = [System.Text.UTF8Encoding]::new($false)
 
 function Write-Step($m) { Write-Host "`n=== $m ===" -ForegroundColor Cyan }
@@ -320,7 +320,6 @@ $claudeDst = Join-Path $Target '.claude'
 if ((Test-Path $claudeSrc) -and (-not (Test-Path $claudeDst))) {
   Copy-Item $claudeSrc $claudeDst -Recurse -Force
 }
-if ($useDesign) { Copy-Item $DesignFile (Join-Path $Target 'docs\DESIGN.md') -Force }
 # bootstrap 이 실제로 설치·고정한 런타임 버전을 생성 프로젝트에 반영 (골격의 값은 덮어쓴다)
 if ($_PinDir) {
   foreach ($pin in '.python-version', '.nvmrc') {
@@ -345,7 +344,7 @@ foreach ($f in $files) {
 Write-Ok "치환 완료"
 
 # ---------- 4. .env 생성 ----------
-Write-Step ".env 생성 (OS 무관 주입 — architecture.md §5)"
+Write-Step ".env 생성 (OS 무관 주입 — ARCHITECTURE.md §5)"
 $backendEnv = @"
 DATABASE_URL=$databaseUrl
 SECRET_KEY=$secret
@@ -448,7 +447,7 @@ Write-Host @"
 [확인]    브라우저: http://localhost:5173
           → '백엔드 API'와 '데이터베이스'가 모두 '정상'이면 성공입니다.
 
-[DB 변경] 모델 수정 시 (architecture.md §11):
+[DB 변경] 모델 수정 시 (ARCHITECTURE.md §11):
   cd "$backend"
   .\.venv\Scripts\python -m alembic revision --autogenerate -m "변경요약"
   .\.venv\Scripts\python -m alembic upgrade head

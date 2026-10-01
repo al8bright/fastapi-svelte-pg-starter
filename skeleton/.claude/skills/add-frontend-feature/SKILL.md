@@ -1,11 +1,11 @@
 ---
 name: add-frontend-feature
-description: __PROJECT_NAME__ 프론트엔드에 기능·페이지·API 호출을 추가할 때 사용. axios + @tanstack/svelte-query + Svelte 5 runes 표준(lib/api/<domain>.ts → lib/queries → routes/컴포넌트)과 보호 라우트/인증 흐름을 architecture.md §13·§14 기준으로 안내한다.
+description: __PROJECT_NAME__ 프론트엔드에 기능·페이지·API 호출을 추가할 때 사용. axios + @tanstack/svelte-query + Svelte 5 runes 표준(lib/api/<domain>.ts → lib/queries → routes/컴포넌트)과 보호 라우트/인증 흐름을 ARCHITECTURE.md §13·§14 기준으로 안내한다.
 ---
 
 # 프론트엔드 기능 추가
 
-표준 스택: **axios + @tanstack/svelte-query + Svelte 5 runes** (architecture.md §13). 패키지 매니저는 **pnpm**(⛔ npm 금지).
+표준 스택: **axios + @tanstack/svelte-query + Svelte 5 runes** (ARCHITECTURE.md §13). 패키지 매니저는 **pnpm**(⛔ npm 금지).
 프레임워크는 **SvelteKit(SPA 모드)** — `adapter-static` + `ssr = false`. 서버 전용 기능은 쓰지 않는다([stack-versions] 참조).
 
 ## 순서

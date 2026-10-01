@@ -1,7 +1,7 @@
 import axios from "axios"
 import { clearToken, getToken } from "$lib/auth/token"
 
-// axios 인스턴스 (architecture.md §13). baseURL 미설정 시 vite dev proxy(/api/v1) 사용.
+// axios 인스턴스 (ARCHITECTURE.md §13). baseURL 미설정 시 vite dev proxy(/api/v1) 사용.
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL
     ? `${import.meta.env.VITE_API_BASE_URL}/api/v1`

@@ -40,7 +40,7 @@ done
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SKELETON_DIR="$SCRIPT_DIR/skeleton"
-DESIGN_FILE="$SCRIPT_DIR/DESIGN.md"
+DESIGN_FILE="$SKELETON_DIR/DESIGN.md"
 
 c_cyan='\033[36m'; c_green='\033[32m'; c_yellow='\033[33m'; c_reset='\033[0m'
 step() { printf "\n${c_cyan}=== %s ===${c_reset}\n" "$1"; }
@@ -273,7 +273,6 @@ else SECRET="change-me-$(date +%s)"; fi
 step "골격 복사 → $TARGET"
 mkdir -p "$TARGET"
 cp -R "$SKELETON_DIR/." "$TARGET/"
-[ $USE_DESIGN -eq 1 ] && cp "$DESIGN_FILE" "$TARGET/docs/DESIGN.md"
 # bootstrap 이 실제로 설치·고정한 런타임 버전을 생성 프로젝트에 반영 (골격의 값은 덮어쓴다)
 if [ -n "$_PIN_DIR" ]; then
   for _pin in .python-version .nvmrc; do
@@ -300,7 +299,7 @@ while IFS= read -r -d '' f; do replace_tokens "$f"; done < <(
 ok "치환 완료"
 
 # ---------- 4. .env ----------
-step ".env 생성 (OS 무관 주입 — architecture.md §5)"
+step ".env 생성 (OS 무관 주입 — ARCHITECTURE.md §5)"
 cat > "$TARGET/backend/.env" <<EOF
 DATABASE_URL=$DATABASE_URL
 SECRET_KEY=$SECRET
@@ -376,7 +375,7 @@ cat <<EOF
 [확인]    브라우저: http://localhost:5173
           → '백엔드 API'와 '데이터베이스'가 모두 '정상'이면 성공입니다.
 
-[DB 변경] 모델 수정 시 (architecture.md §11):
+[DB 변경] 모델 수정 시 (ARCHITECTURE.md §11):
   cd "$BACKEND"
   .venv/bin/python -m alembic revision --autogenerate -m "변경요약"
   .venv/bin/python -m alembic upgrade head

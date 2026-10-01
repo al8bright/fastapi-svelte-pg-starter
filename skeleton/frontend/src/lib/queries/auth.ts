@@ -2,7 +2,7 @@ import { createMutation, createQuery } from "@tanstack/svelte-query"
 import { getMe, login } from "$lib/api/auth"
 import { authStore } from "$lib/stores/auth.svelte"
 
-// 인증 쿼리 (architecture.md §13, §14).
+// 인증 쿼리 (ARCHITECTURE.md §13, §14).
 // svelte-query v6 은 옵션을 "함수(accessor)"로 받는다 — 함수 본문이 runes 처럼 반응형으로 재평가된다.
 // 컴포넌트 초기화 시점(<script> 최상단)에서만 호출할 것. 이벤트 핸들러 안에서 호출하면 context 를 못 찾는다.
 

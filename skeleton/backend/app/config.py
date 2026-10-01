@@ -1,4 +1,4 @@
-"""애플리케이션 설정 (architecture.md §5).
+"""애플리케이션 설정 (ARCHITECTURE.md §5).
 
 설정은 OS 무관하게 .env 로 주입한다. 접근은 항상 get_settings() 로 한다.
 """

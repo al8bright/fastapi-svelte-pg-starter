@@ -1,4 +1,4 @@
-"""사용자/인증 스키마 (architecture.md §8) — Pydantic v2."""
+"""사용자/인증 스키마 (ARCHITECTURE.md §8) — Pydantic v2."""
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.core.security import MAX_PASSWORD_BYTES
