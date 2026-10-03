@@ -14,3 +14,6 @@
 Thumbs.db
 .vscode/
 .idea/
+
+# Local tooling
+install-pyenv-win.ps1
